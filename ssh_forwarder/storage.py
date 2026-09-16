@@ -23,20 +23,31 @@ class ProfileStore:
         self.path = path or default_data_file()
         self.favorites: list[ForwardProfile] = []
         self.preferences: dict[str, Any] = {}
+        self.load_failed = False
 
     def load(self) -> None:
         self.favorites = []
         self.preferences = {}
+        self.load_failed = False
         if not self.path.exists():
             return
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
             if not isinstance(payload, dict):
                 raise ValueError("配置文件根节点不是对象")
-            for item in payload.get("favorites", []):
+            favorites = payload.get("favorites", [])
+            if not isinstance(favorites, list):
+                raise ValueError("收藏列表不是数组")
+            seen_ids: set[str] = set()
+            for item in favorites:
+                if not isinstance(item, dict):
+                    continue
                 try:
                     profile = ForwardProfile.from_dict(item)
                     profile.validate()
+                    if profile.id in seen_ids:
+                        continue
+                    seen_ids.add(profile.id)
                     self.favorites.append(profile)
                 except (TypeError, ValueError):
                     continue
@@ -44,6 +55,7 @@ class ProfileStore:
             if isinstance(preferences, dict):
                 self.preferences = preferences
         except (OSError, json.JSONDecodeError, ValueError) as exc:
+            self.load_failed = True
             raise ValueError(f"无法读取配置文件：{exc}") from exc
 
     def save(self) -> None:
@@ -58,6 +70,7 @@ class ProfileStore:
             json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         os.replace(temporary, self.path)
+        self.load_failed = False
 
     def upsert(self, profile: ForwardProfile) -> None:
         profile.validate()
@@ -76,4 +89,3 @@ class ProfileStore:
 
     def get(self, profile_id: str) -> ForwardProfile | None:
         return next((item for item in self.favorites if item.id == profile_id), None)
-

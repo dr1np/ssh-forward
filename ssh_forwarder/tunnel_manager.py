@@ -7,6 +7,7 @@ import socket
 import subprocess
 import threading
 from collections.abc import Iterable
+from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -86,54 +87,74 @@ class TunnelManager:
         self.tunnels: dict[str, ActiveTunnel] = {}
         self.events: queue.Queue[tuple[str, str, str]] = queue.Queue()
         self._lock = threading.RLock()
+        self._accepting_starts = True
 
     def start(self, profile: ForwardProfile) -> ActiveTunnel:
         if not self.ssh_executable:
             raise RuntimeError(
                 "未找到 Windows OpenSSH 客户端。请在“可选功能”中安装 OpenSSH 客户端。"
             )
-        profile.validate()
-        if not is_local_port_available(profile.local_bind, profile.local_port):
-            raise RuntimeError(
-                f"本地端口 {profile.local_bind}:{profile.local_port} 已被占用。"
-            )
-        command = build_ssh_command(self.ssh_executable, profile)
-        try:
-            process = subprocess.Popen(
-                command,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0,
-            )
-        except OSError as exc:
-            raise RuntimeError(f"无法启动 SSH：{exc}") from exc
-
-        tunnel_id = uuid4().hex
-        active = ActiveTunnel(tunnel_id, profile.clone(keep_id=False), process)
         with self._lock:
+            if not self._accepting_starts:
+                raise RuntimeError("应用正在关闭，无法启动新的转发。")
+            profile.validate()
+            if not is_local_port_available(profile.local_bind, profile.local_port):
+                raise RuntimeError(
+                    f"本地端口 {profile.local_bind}:{profile.local_port} 已被占用。"
+                )
+            command = build_ssh_command(self.ssh_executable, profile)
+            try:
+                process = subprocess.Popen(
+                    command,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0,
+                )
+            except OSError as exc:
+                raise RuntimeError(f"无法启动 SSH：{exc}") from exc
+
+            tunnel_id = uuid4().hex
+            active = ActiveTunnel(tunnel_id, profile.clone(keep_id=False), process)
             self.tunnels[tunnel_id] = active
-        threading.Thread(
-            target=self._watch_process, args=(active,), daemon=True
-        ).start()
-        return active
+            threading.Thread(
+                target=self._watch_process, args=(active,), daemon=True
+            ).start()
+            return active
 
     def _watch_process(self, tunnel: ActiveTunnel) -> None:
         messages: list[str] = []
-        if tunnel.process.stderr is not None:
-            for line in iter(tunnel.process.stderr.readline, ""):
-                clean = line.strip()
-                if clean:
-                    messages.append(clean)
-                    self.events.put(("log", tunnel.id, clean))
+        stderr = tunnel.process.stderr
+        try:
+            if stderr is not None:
+                for line in iter(stderr.readline, ""):
+                    clean = line.strip()
+                    if clean:
+                        messages.append(clean)
+                        self.events.put(("log", tunnel.id, clean))
+        except (OSError, ValueError) as exc:
+            message = f"读取 SSH 错误日志失败：{exc}"
+            messages.append(message)
+            self.events.put(("log", tunnel.id, message))
+        finally:
+            if stderr is not None:
+                try:
+                    stderr.close()
+                except (OSError, ValueError) as exc:
+                    message = f"关闭 SSH 错误日志失败：{exc}"
+                    messages.append(message)
+                    self.events.put(("log", tunnel.id, message))
         return_code = tunnel.process.wait()
+        ended_at = datetime.now()
         with self._lock:
             current = self.tunnels.get(tunnel.id)
             if current is None:
                 return
+            if current.ended_at is None:
+                current.ended_at = ended_at
             if current.status == "正在停止":
                 current.status = "已停止"
                 self.events.put(("stopped", tunnel.id, "转发已停止"))
@@ -141,6 +162,16 @@ class TunnelManager:
                 current.status = "连接失败" if return_code else "已结束"
                 current.last_error = messages[-1] if messages else f"SSH 已退出（代码 {return_code}）"
                 self.events.put(("exited", tunnel.id, current.last_error))
+
+    def get(self, tunnel_id: str) -> ActiveTunnel | None:
+        with self._lock:
+            return self.tunnels.get(tunnel_id)
+
+    def snapshot(self) -> list[ActiveTunnel]:
+        """Return a stable list for UI reads while workers update the registry."""
+
+        with self._lock:
+            return list(self.tunnels.values())
 
     def mark_connected_if_running(self, tunnel_id: str) -> bool:
         with self._lock:
@@ -153,16 +184,62 @@ class TunnelManager:
     def stop(self, tunnel_id: str) -> None:
         with self._lock:
             tunnel = self.tunnels.get(tunnel_id)
-            if not tunnel or tunnel.process.poll() is not None:
+            if not tunnel:
                 return
-            tunnel.status = "正在停止"
             process = tunnel.process
-        process.terminate()
+            if process.poll() is not None:
+                if tunnel.ended_at is None:
+                    tunnel.ended_at = datetime.now()
+                return
+            previous_status = tunnel.status
+            tunnel.status = "正在停止"
+
+        try:
+            process.terminate()
+        except OSError:
+            if process.poll() is not None:
+                self._mark_ended_at(tunnel)
+                return
+            self._restore_status_if_running(tunnel, previous_status)
+            raise
         try:
             process.wait(timeout=2)
         except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=2)
+            try:
+                process.kill()
+            except OSError as exc:
+                if process.poll() is None:
+                    self._restore_status_if_running(tunnel, previous_status)
+                    raise RuntimeError("无法终止 SSH 进程。") from exc
+            try:
+                process.wait(timeout=2)
+            except (subprocess.TimeoutExpired, OSError) as exc:
+                if process.poll() is None:
+                    self._restore_status_if_running(tunnel, previous_status)
+                    if isinstance(exc, subprocess.TimeoutExpired):
+                        raise RuntimeError("SSH 进程未能在超时后停止。") from exc
+                    raise RuntimeError("无法确认 SSH 进程已停止。") from exc
+        except OSError:
+            if process.poll() is None:
+                self._restore_status_if_running(tunnel, previous_status)
+                raise
+        self._mark_ended_at(tunnel)
+
+    def _mark_ended_at(self, tunnel: ActiveTunnel) -> None:
+        with self._lock:
+            current = self.tunnels.get(tunnel.id)
+            if current is tunnel and current.ended_at is None:
+                current.ended_at = datetime.now()
+
+    def _restore_status_if_running(self, tunnel: ActiveTunnel, status: str) -> None:
+        with self._lock:
+            current = self.tunnels.get(tunnel.id)
+            if (
+                current is tunnel
+                and current.process.poll() is None
+                and current.status == "正在停止"
+            ):
+                current.status = status
 
     def remove_finished(self, tunnel_id: str) -> None:
         with self._lock:
@@ -170,11 +247,27 @@ class TunnelManager:
             if tunnel and tunnel.process.poll() is not None:
                 self.tunnels.pop(tunnel_id, None)
 
-    def stop_all(self) -> None:
+    def _stop_ids(self, ids: Iterable[str]) -> list[tuple[str, str]]:
+        errors: list[tuple[str, str]] = []
+        for tunnel_id in ids:
+            try:
+                self.stop(tunnel_id)
+            except Exception as exc:  # keep shutdown attempting every process
+                errors.append((tunnel_id, str(exc)))
+        return errors
+
+    def stop_all(self) -> list[tuple[str, str]]:
         with self._lock:
             ids: Iterable[str] = list(self.tunnels)
-        for tunnel_id in ids:
-            self.stop(tunnel_id)
+        return self._stop_ids(ids)
+
+    def shutdown(self) -> list[tuple[str, str]]:
+        """Prevent new starts, then stop every tunnel known at shutdown time."""
+
+        with self._lock:
+            self._accepting_starts = False
+            ids: Iterable[str] = list(self.tunnels)
+        return self._stop_ids(ids)
 
     def running_count(self) -> int:
         with self._lock:

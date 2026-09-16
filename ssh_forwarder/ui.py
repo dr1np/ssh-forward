@@ -103,6 +103,7 @@ class SSHForwarderApp:
         self.host_aliases: list[str] = []
         self.editing_favorite_id: str | None = None
         self._startup_error = ""
+        self._closing = False
         self._async_results: queue.Queue[tuple[str, str, object]] = queue.Queue()
 
         try:
@@ -700,6 +701,7 @@ class SSHForwarderApp:
         self.active_tree.tag_configure("running", foreground="#606C38")
         self.active_tree.tag_configure("failed", foreground="#A84B3B")
         self.active_tree.tag_configure("pending", foreground="#B08E3A")
+        self.active_tree.tag_configure("stopped", foreground="#756B58")
         self.active_tree.bind("<Double-1>", lambda _event: self.copy_selected_endpoint())
 
         buttons = tk.Frame(tab, background=COLORS["white"])
@@ -862,6 +864,8 @@ class SSHForwarderApp:
         self.start_profile(profile)
 
     def start_profile(self, profile: ForwardProfile) -> bool:
+        if self._closing:
+            return False
         if not self._confirm_network_exposure(profile):
             return False
         try:
@@ -896,7 +900,7 @@ class SSHForwarderApp:
 
     def _confirm_started(self, tunnel_id: str) -> None:
         if self.manager.mark_connected_if_running(tunnel_id):
-            tunnel = self.manager.tunnels.get(tunnel_id)
+            tunnel = self.manager.get(tunnel_id)
             if tunnel:
                 self.log(f"“{tunnel.profile.name}”已开始转发。", "成功")
             self._refresh_active_rows()
@@ -1021,7 +1025,7 @@ class SSHForwarderApp:
             messagebox.showinfo("请选择转发", "请先在运行列表中选择一项。", parent=self.root)
             return None
         tunnel_id = selected[0]
-        tunnel = self.manager.tunnels.get(tunnel_id)
+        tunnel = self.manager.get(tunnel_id)
         if not tunnel:
             return None
         if require_running and tunnel.process.poll() is not None:
@@ -1033,7 +1037,9 @@ class SSHForwarderApp:
         tunnel_id = self._selected_tunnel_id(require_running=True)
         if not tunnel_id:
             return
-        tunnel = self.manager.tunnels[tunnel_id]
+        tunnel = self.manager.get(tunnel_id)
+        if not tunnel:
+            return
         self.log(f"正在停止“{tunnel.profile.name}”…")
         threading.Thread(target=self._stop_worker, args=(tunnel_id,), daemon=True).start()
 
@@ -1045,8 +1051,8 @@ class SSHForwarderApp:
 
     def clear_finished(self) -> None:
         removed = 0
-        for tunnel_id in list(self.manager.tunnels):
-            tunnel = self.manager.tunnels[tunnel_id]
+        for tunnel in self.manager.snapshot():
+            tunnel_id = tunnel.id
             if tunnel.process.poll() is not None:
                 self.manager.remove_finished(tunnel_id)
                 if self.active_tree.exists(tunnel_id):
@@ -1060,7 +1066,10 @@ class SSHForwarderApp:
         tunnel_id = self._selected_tunnel_id()
         if not tunnel_id:
             return
-        endpoint = self.manager.tunnels[tunnel_id].profile.local_endpoint
+        tunnel = self.manager.get(tunnel_id)
+        if not tunnel:
+            return
+        endpoint = tunnel.profile.local_endpoint
         self.root.clipboard_clear()
         self.root.clipboard_append(endpoint)
         self.log(f"已复制本地地址：{endpoint}", "成功")
@@ -1069,7 +1078,9 @@ class SSHForwarderApp:
         tunnel_id = self._selected_tunnel_id(require_running=True)
         if not tunnel_id:
             return
-        tunnel = self.manager.tunnels[tunnel_id]
+        tunnel = self.manager.get(tunnel_id)
+        if not tunnel:
+            return
         new_port = simpledialog.askinteger(
             "更改本地端口",
             f"当前端口：{tunnel.profile.local_port}\n请输入新端口：",
@@ -1126,12 +1137,18 @@ class SSHForwarderApp:
                 self.log(f"本地端口已改为 {active.profile.local_port}，正在重新连接。", "成功")
                 self.root.after(900, lambda item_id=active.id: self._confirm_started(item_id))
             elif event == "port_error":
-                if self.active_tree.exists(tunnel_id):
+                old_tunnel = self.manager.get(tunnel_id)
+                old_is_running = bool(old_tunnel and old_tunnel.process.poll() is None)
+                if not old_is_running and self.active_tree.exists(tunnel_id):
                     self.active_tree.delete(tunnel_id)
                 self.log(f"更改端口失败：{payload}", "错误")
+                if old_is_running:
+                    message = f"原转发仍在运行，新端口未能启动：\n{payload}"
+                else:
+                    message = f"原转发已停止，但新端口未能启动：\n{payload}"
                 messagebox.showerror(
                     "更改端口失败",
-                    f"原转发已停止，但新端口未能启动：\n{payload}",
+                    message,
                     parent=self.root,
                 )
             elif event == "error":
@@ -1144,7 +1161,7 @@ class SSHForwarderApp:
                 event, tunnel_id, message = self.manager.events.get_nowait()
             except queue.Empty:
                 break
-            tunnel = self.manager.tunnels.get(tunnel_id)
+            tunnel = self.manager.get(tunnel_id)
             name = tunnel.profile.name if tunnel else "转发"
             if event == "log":
                 self.log(f"[{name}] {message}", "错误")
@@ -1158,12 +1175,22 @@ class SSHForwarderApp:
 
     def _refresh_active_rows(self) -> None:
         now = datetime.now()
-        for tunnel_id, tunnel in list(self.manager.tunnels.items()):
+        for tunnel in self.manager.snapshot():
+            tunnel_id = tunnel.id
             if not self.active_tree.exists(tunnel_id):
                 continue
-            seconds = max(0, int((now - tunnel.started_at).total_seconds()))
+            finished = tunnel.process.poll() is not None
+            end_time = tunnel.ended_at if finished else now
+            if end_time is None:
+                end_time = now
+            seconds = max(0, int((end_time - tunnel.started_at).total_seconds()))
             elapsed = f"{seconds // 60:02d}:{seconds % 60:02d}"
-            tag = "running" if tunnel.status == "运行中" else ("failed" if tunnel.process.poll() is not None else "pending")
+            if tunnel.status == "运行中":
+                tag = "running"
+            elif finished:
+                tag = "failed" if tunnel.status == "连接失败" else "stopped"
+            else:
+                tag = "pending"
             self.active_tree.item(
                 tunnel_id,
                 values=(
@@ -1220,13 +1247,25 @@ class SSHForwarderApp:
             parent=self.root,
         ):
             return
+        self._closing = True
+        shutdown_errors = self.manager.shutdown()
         self.store.preferences["window_geometry"] = self.root.geometry()
         self.store.preferences["dpi_aware_v2"] = True
-        try:
-            self.store.save()
-        except OSError:
-            pass
-        self.manager.stop_all()
+        if not self.store.load_failed:
+            try:
+                self.store.save()
+            except OSError:
+                pass
+        if shutdown_errors:
+            details = "\n".join(
+                f"{tunnel_id}: {message}" for tunnel_id, message in shutdown_errors
+            )
+            self.log(f"部分转发未能确认停止：\n{details}", "错误")
+            messagebox.showwarning(
+                "部分转发停止失败",
+                f"窗口将关闭，但以下进程未能确认停止：\n{details}",
+                parent=self.root,
+            )
         self.root.destroy()
 
 

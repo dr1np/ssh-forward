@@ -46,6 +46,8 @@ class ForwardProfileTests(unittest.TestCase):
         )
         command = build_ssh_command("ssh", profile)
         self.assertIn("[::1]:8080:[2001:db8::1]:80", command)
+        self.assertEqual(profile.local_endpoint, "[::1]:8080")
+        self.assertEqual(profile.target_endpoint, "[2001:db8::1]:80")
 
     def test_invalid_port_is_rejected(self) -> None:
         profile = ForwardProfile(
@@ -58,7 +60,22 @@ class ForwardProfileTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             profile.validate()
 
+    def test_non_integer_port_is_rejected(self) -> None:
+        for value in (True, 1.5, "8080"):
+            profile = ForwardProfile(
+                name="bad",
+                ssh_host="server",
+                local_port=value,
+                remote_host="localhost",
+                remote_port=80,
+            )
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                profile.validate()
+
+    def test_from_dict_rejects_non_mapping(self) -> None:
+        with self.assertRaises(ValueError):
+            ForwardProfile.from_dict(None)
+
 
 if __name__ == "__main__":
     unittest.main()
-
