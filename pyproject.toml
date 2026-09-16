@@ -1,0 +1,10 @@
+[project]
+name = "ssh-forwarder"
+version = "1.0.0"
+description = "A Windows desktop UI for managing SSH local port forwards"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
