@@ -28,6 +28,23 @@
 python main.py
 ```
 
+## 前端重构预览
+
+当前仓库同时包含第一阶段的 Svelte/Vite 前端壳，位于 [`frontend/`](./frontend/)。它使用显式标记的演示数据，暂未连接 Python 核心或 Tauri command。
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+检查和生产构建：
+
+```powershell
+npm run check
+npm run build
+```
+
 ## 使用方法
 
 1. 在左侧选择 **SSH Config** 主机，或切换到 **自定义主机** 填写连接信息。
