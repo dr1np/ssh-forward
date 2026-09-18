@@ -9,6 +9,8 @@
     | "file"
     | "link"
     | "moon"
+    | "minus"
+    | "maximize"
     | "play"
     | "plus"
     | "refresh"
@@ -56,6 +58,10 @@
     <path d="M14 10.5a4 4 0 0 0-5.7-.1l-2.1 2.1a4 4 0 0 0 5.7 5.7l1.1-1.1" />
   {:else if name === "moon"}
     <path d="M20.5 15.3A8.5 8.5 0 0 1 8.7 3.5 8.5 8.5 0 1 0 20.5 15.3z" />
+  {:else if name === "minus"}
+    <path d="M5 12h14" />
+  {:else if name === "maximize"}
+    <rect x="5" y="5" width="14" height="14" rx="1" />
   {:else if name === "play"}
     <path d="m8 5 11 7-11 7z" />
   {:else if name === "plus"}

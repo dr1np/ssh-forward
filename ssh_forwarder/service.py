@@ -122,6 +122,13 @@ class BackendService:
                     self.manager.remove_finished(tunnel.id)
                     removed += 1
             return {"removed": removed}
+        if method == "delete_tunnel":
+            tunnel_id = str(params["tunnel_id"])
+            tunnel = self.manager.get(tunnel_id)
+            if tunnel and tunnel.process.poll() is None:
+                raise ValueError("运行中的转发不能删除，请先停止。")
+            self.manager.remove_finished(tunnel_id)
+            return {"deleted": self.manager.get(tunnel_id) is None}
         if method == "save_profile":
             profile = ForwardProfile.from_dict(params["profile"])
             self.store.upsert(profile)

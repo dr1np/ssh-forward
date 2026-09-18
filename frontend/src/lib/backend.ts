@@ -123,6 +123,10 @@ export async function clearFinishedTunnels(): Promise<number> {
   return result.removed;
 }
 
+export async function deleteTunnel(tunnelId: string): Promise<void> {
+  await request("delete_tunnel", { tunnel_id: tunnelId });
+}
+
 export async function saveProfile(profile: ForwardProfile): Promise<ForwardProfile> {
   const result = await request<{ profile: BackendProfile }>("save_profile", {
     profile: toBackendProfile(profile),

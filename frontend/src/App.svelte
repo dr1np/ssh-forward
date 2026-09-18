@@ -1,8 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import ConfirmDialog from "./lib/components/ConfirmDialog.svelte";
   import Icon from "./lib/components/Icon.svelte";
   import LogPanel from "./lib/components/LogPanel.svelte";
+  import PortDialog from "./lib/components/PortDialog.svelte";
+  import PreferencesModal from "./lib/components/PreferencesModal.svelte";
   import ProfileEditor from "./lib/components/ProfileEditor.svelte";
   import StatusBadge from "./lib/components/StatusBadge.svelte";
   import TunnelCard from "./lib/components/TunnelCard.svelte";
@@ -12,6 +15,7 @@
     chooseIdentityFile,
     clearFinishedTunnels,
     deleteProfile as deleteBackendProfile,
+    deleteTunnel as deleteBackendTunnel,
     findAvailablePort,
     isDesktopRuntime,
     loadHosts,
@@ -25,9 +29,11 @@
   import { sampleLogs, sampleProfiles, sampleTunnels } from "./lib/mock";
   import { formatLocalEndpoint, formatRemoteEndpoint } from "./lib/endpoints";
   import type { ActiveTunnel, ForwardProfile, LogEntry, WorkspaceTab } from "./lib/types";
+  import { readPreferences, writePreferences, type AppPreferences } from "./lib/preferences";
   import { restoreWindowState, saveWindowState } from "./lib/window-state";
 
   const desktopRuntime = isDesktopRuntime();
+  let preferences = $state<AppPreferences>(readPreferences());
   let activeTab = $state<WorkspaceTab>("running");
   let profiles = $state<ForwardProfile[]>([...sampleProfiles]);
   let tunnels = $state<ActiveTunnel[]>([...sampleTunnels]);
@@ -39,6 +45,15 @@
   let backendReady = $state(!desktopRuntime);
   let backendError = $state("");
   let hostAliases = $state(["production", "staging", "bastion"]);
+  let preferencesOpen = $state(false);
+  let portDialogTunnel = $state<ActiveTunnel | null>(null);
+  let profileToDelete = $state<ForwardProfile | null>(null);
+  let tunnelToDelete = $state<ActiveTunnel | null>(null);
+  let exposureDialogOpen = $state(false);
+  let exposureResolver: ((confirmed: boolean) => void) | null = null;
+  let closeDialogCount = $state(0);
+  let closeDialogOpen = $state(false);
+  let closeDialogPending = false;
 
   function makeBlankProfile(host = ""): ForwardProfile {
     return {
@@ -49,7 +64,7 @@
       sshPort: 22,
       sshUser: "",
       identityFile: "",
-      localBind: "127.0.0.1",
+      localBind: preferences.defaultLocalBind,
       localPort: 8080,
       remoteHost: "127.0.0.1",
       remotePort: 80,
@@ -75,6 +90,87 @@
   const resetEditor = () => {
     selectedProfile = makeBlankProfile(hostAliases[0] ?? "");
     editorKey += 1;
+  };
+
+  const savePreferences = (next: AppPreferences) => {
+    preferences = next;
+    writePreferences(next);
+    preferencesOpen = false;
+    if (!selectedProfile.name) {
+      selectedProfile = { ...selectedProfile, localBind: next.defaultLocalBind };
+      editorKey += 1;
+    }
+    addLog("success", "偏好设置已保存。");
+  };
+
+  const askNetworkExposure = (): Promise<boolean> => {
+    exposureDialogOpen = true;
+    return new Promise((resolve) => {
+      exposureResolver = resolve;
+    });
+  };
+
+  const resolveNetworkExposure = (confirmed: boolean) => {
+    exposureDialogOpen = false;
+    exposureResolver?.(confirmed);
+    exposureResolver = null;
+  };
+
+  const cancelClose = () => {
+    closeDialogOpen = false;
+    closeDialogCount = 0;
+  };
+
+  const confirmClose = async () => {
+    closeDialogOpen = false;
+    closeDialogPending = true;
+    try {
+      await getCurrentWindow().close();
+    } catch {
+      closeDialogPending = false;
+    }
+  };
+
+  const requestDeleteProfile = (profile: ForwardProfile) => {
+    profileToDelete = profile;
+  };
+
+  const confirmDeleteProfile = async () => {
+    const profile = profileToDelete;
+    profileToDelete = null;
+    if (!profile) return;
+    try {
+      if (desktopRuntime) await deleteBackendProfile(profile.id);
+      profiles = profiles.filter((item) => item.id !== profile.id);
+      if (selectedProfile.id === profile.id) {
+        selectedProfile = makeBlankProfile(hostAliases[0] ?? "");
+        editorKey += 1;
+      }
+      addLog("info", `已删除收藏“${profile.name}”。`);
+    } catch (error) {
+      backendError = String(error);
+      addLog("error", `删除收藏失败：${backendError}`);
+    }
+  };
+
+  const requestDeleteTunnel = (tunnel: ActiveTunnel) => {
+    if (tunnel.status === "running" || tunnel.status === "connecting") return;
+    tunnelToDelete = tunnel;
+  };
+
+  const confirmDeleteTunnel = async () => {
+    const tunnel = tunnelToDelete;
+    tunnelToDelete = null;
+    if (!tunnel) return;
+    try {
+      if (desktopRuntime) await deleteBackendTunnel(tunnel.id);
+      tunnels = tunnels.filter((item) => item.id !== tunnel.id);
+      if (selectedTunnelId === tunnel.id) selectedTunnelId = "";
+      addLog("info", `已删除“${tunnel.profile.name}”的结束记录。`);
+    } catch (error) {
+      backendError = String(error);
+      addLog("error", `删除转发记录失败：${backendError}`);
+    }
   };
 
   const hydrateDesktop = async () => {
@@ -140,10 +236,17 @@
   let unlistenBackend: (() => void) | undefined;
   onMount(() => {
     if (!desktopRuntime) return;
+    void getCurrentWindow().setTitle("SSH 端口转发助手");
     const closeListener = getCurrentWindow().onCloseRequested((event) => {
       const runningCount = tunnels.filter((item) => item.status === "running" || item.status === "connecting").length;
-      if (runningCount > 0 && !window.confirm(`当前有 ${runningCount} 个转发正在运行。退出会全部停止，确定继续吗？`)) {
+      if (closeDialogPending) {
+        closeDialogPending = false;
+        return;
+      }
+      if (preferences.confirmOnExit && runningCount > 0) {
         event.preventDefault();
+        closeDialogCount = runningCount;
+        closeDialogOpen = true;
       }
     });
     void restoreWindowState();
@@ -185,22 +288,6 @@
     if (await saveProfile(profile)) await startTunnel(profile);
   };
 
-  const deleteProfile = async (profile: ForwardProfile) => {
-    if (!window.confirm(`确定删除收藏“${profile.name}”吗？`)) return;
-    try {
-      if (desktopRuntime) await deleteBackendProfile(profile.id);
-      profiles = profiles.filter((item) => item.id !== profile.id);
-      if (selectedProfile.id === profile.id) {
-        selectedProfile = makeBlankProfile(hostAliases[0] ?? "");
-        editorKey += 1;
-      }
-      addLog("info", `已删除收藏“${profile.name}”。`);
-    } catch (error) {
-      backendError = String(error);
-      addLog("error", `删除收藏失败：${backendError}`);
-    }
-  };
-
   const refreshHosts = async () => {
     if (!desktopRuntime) return;
     try {
@@ -233,7 +320,7 @@
   };
 
   const startTunnel = async (profile: ForwardProfile) => {
-    if (profile.localBind === "0.0.0.0" && !window.confirm("监听 0.0.0.0 会让局域网内的其他设备也可能访问此端口。\n\n确定继续吗？")) {
+    if (profile.localBind === "0.0.0.0" && !(await askNetworkExposure())) {
       return;
     }
     if (desktopRuntime) {
@@ -242,7 +329,7 @@
         tunnels = [active, ...tunnels.filter((item) => item.id !== active.id)];
         selectedTunnelId = active.id;
         activeTab = "running";
-        addLog("info", `正在启动“${profile.name}”：localhost:${profile.localPort} → ${profile.remoteHost}:${profile.remotePort}。`);
+        addLog("info", `正在启动“${profile.name}”：${formatLocalEndpoint(profile)} → ${formatRemoteEndpoint(profile)}。`);
       } catch (error) {
         backendError = String(error);
         addLog("error", `无法启动转发：${backendError}`);
@@ -285,13 +372,14 @@
   };
 
   const changePort = async (tunnel: ActiveTunnel) => {
-    const entered = window.prompt("请输入新的本地端口：", String(tunnel.profile.localPort));
-    if (entered === null) return;
-    const nextPort = Number(entered.trim());
-    if (!Number.isInteger(nextPort) || nextPort < 1 || nextPort > 65535) {
-      backendError = "本地端口必须是 1 到 65535 之间的整数。";
-      return;
-    }
+    if (tunnel.status !== "running" && tunnel.status !== "connecting") return;
+    portDialogTunnel = tunnel;
+  };
+
+  const submitPortChange = async (nextPort: number) => {
+    const tunnel = portDialogTunnel;
+    portDialogTunnel = null;
+    if (!tunnel) return;
     if (desktopRuntime) {
       try {
         const replacement = await changeTunnelPort(tunnel.id, nextPort);
@@ -323,21 +411,39 @@
   const clearLogs = () => {
     logs = [];
   };
+
+  const minimizeWindow = () => {
+    if (desktopRuntime) void getCurrentWindow().minimize();
+  };
+
+  const toggleMaximizeWindow = () => {
+    if (desktopRuntime) void getCurrentWindow().toggleMaximize();
+  };
+
+  const closeWindow = () => {
+    if (desktopRuntime) void getCurrentWindow().close();
+  };
 </script>
 
 <svelte:head>
   <meta name="description" content="集中管理 SSH 本地端口转发。" />
 </svelte:head>
 
-<div class="app-shell">
-  <aside class="sidebar">
-    <div class="brand">
-      <div class="brand-mark"><span></span><span></span><span></span></div>
-      <div>
-        <strong>SSH Forwarder</strong>
-        <span>端口转发助手</span>
-      </div>
+<div class="app-window">
+  <div class="window-titlebar" data-tauri-drag-region>
+    <div class="window-titlebar__identity" data-tauri-drag-region>
+      <span class="window-titlebar__mark"><Icon name="link" size={13} /></span>
+      <span>SSH Forwarder</span>
     </div>
+    <div class="window-controls">
+      <button class="window-control" type="button" aria-label="最小化" title="最小化" onclick={minimizeWindow}><Icon name="minus" size={14} /></button>
+      <button class="window-control" type="button" aria-label="最大化" title="最大化" onclick={toggleMaximizeWindow}><Icon name="maximize" size={12} /></button>
+      <button class="window-control window-control--close" type="button" aria-label="关闭" title="关闭" onclick={closeWindow}><Icon name="close" size={14} /></button>
+    </div>
+  </div>
+
+  <div class="app-shell">
+  <aside class="sidebar">
 
     <div class="sidebar-demo-note"><span class:demo-dot--green={desktopRuntime && backendReady} class="demo-dot"></span> {desktopRuntime ? (backendReady ? "桌面后端 · 已连接" : "桌面后端 · 连接中") : "前端预览 · 演示数据"}</div>
 
@@ -350,7 +456,7 @@
     <div class="sidebar-section-label">系统</div>
     <div class="sidebar-nav sidebar-nav--secondary">
       <button type="button"><Icon name="server" size={17} /> OpenSSH <small>{desktopRuntime && backendReady ? "已连接" : "预览"}</small></button>
-      <button type="button"><Icon name="sliders" size={17} /> 偏好设置</button>
+      <button type="button" onclick={() => (preferencesOpen = true)}><Icon name="sliders" size={17} /> 偏好设置</button>
     </div>
 
     <div class="sidebar-footer">
@@ -367,7 +473,7 @@
       </div>
       <div class="topbar-actions">
         {#if copiedEndpoint}<span class="toast"><Icon name="check" size={15} /> 已复制 {copiedEndpoint}</span>{/if}
-        <button class="icon-button icon-button--large" type="button" title="切换主题" aria-label="切换主题"><Icon name="sun" size={18} /></button>
+        <button class="icon-button icon-button--large" type="button" title="打开偏好设置" aria-label="打开偏好设置" onclick={() => (preferencesOpen = true)}><Icon name="sliders" size={18} /></button>
         <button class="profile-chip" type="button" aria-label="打开应用菜单"><span class="profile-avatar">T</span><span>本机</span><Icon name="chevron" size={15} /></button>
       </div>
     </header>
@@ -379,7 +485,7 @@
     <div class="content-grid">
       <div class="editor-column">
         {#key editorKey}
-          <ProfileEditor initialProfile={selectedProfile} {hostAliases} onSave={saveProfile} onStart={startTunnel} onRefreshHosts={refreshHosts} onFindPort={getFreePort} onChooseIdentityFile={chooseIdentityPath} onReset={resetEditor} onStartAndSave={startAndSave} />
+          <ProfileEditor initialProfile={selectedProfile} {hostAliases} autoSelectPort={preferences.autoSelectPort} onSave={saveProfile} onStart={startTunnel} onRefreshHosts={refreshHosts} onFindPort={getFreePort} onChooseIdentityFile={chooseIdentityPath} onReset={resetEditor} onStartAndSave={startAndSave} />
         {/key}
       </div>
 
@@ -399,7 +505,7 @@
         {#if activeTab === "running"}
           <div class="tunnel-list">
             {#each tunnels as tunnel (tunnel.id)}
-              <TunnelCard tunnel={tunnel} selected={selectedTunnelId === tunnel.id} onSelect={selectTunnel} onCopy={copyEndpoint} onPortChange={changePort} onStop={stopTunnel} />
+              <TunnelCard tunnel={tunnel} selected={selectedTunnelId === tunnel.id} onSelect={selectTunnel} onCopy={copyEndpoint} onPortChange={changePort} onStop={stopTunnel} onDelete={requestDeleteTunnel} />
             {:else}
               <div class="empty-state">
                 <span class="empty-state__icon"><Icon name="link" size={22} /></span>
@@ -419,7 +525,7 @@
                 </div>
                 <div class="favorite-actions">
                   <button class="icon-button" type="button" title="编辑配置" aria-label="编辑配置" onclick={() => selectProfile(profile)}><Icon name="edit" size={16} /></button>
-                  <button class="icon-button icon-button--danger" type="button" title="删除收藏" aria-label="删除收藏" onclick={() => deleteProfile(profile)}><Icon name="trash" size={16} /></button>
+                  <button class="icon-button icon-button--danger" type="button" title="删除收藏" aria-label="删除收藏" onclick={() => requestDeleteProfile(profile)}><Icon name="trash" size={16} /></button>
                   <button class="button button--primary button--small" type="button" onclick={() => startTunnel(profile)}><Icon name="play" size={14} /> 启动</button>
                 </div>
               </article>
@@ -431,4 +537,29 @@
       </section>
     </div>
   </main>
+  </div>
 </div>
+
+{#if portDialogTunnel}
+  <PortDialog currentPort={portDialogTunnel.profile.localPort} onCancel={() => (portDialogTunnel = null)} onConfirm={submitPortChange} />
+{/if}
+
+{#if profileToDelete}
+  <ConfirmDialog title="删除收藏" message={`确定删除收藏“${profileToDelete.name}”吗？`} confirmLabel="删除收藏" danger onCancel={() => (profileToDelete = null)} onConfirm={confirmDeleteProfile} />
+{/if}
+
+{#if tunnelToDelete}
+  <ConfirmDialog title="删除结束记录" message={`删除“${tunnelToDelete.profile.name}”后，这条连接记录将从列表中移除。`} confirmLabel="删除记录" danger onCancel={() => (tunnelToDelete = null)} onConfirm={confirmDeleteTunnel} />
+{/if}
+
+{#if exposureDialogOpen}
+  <ConfirmDialog title="确认局域网监听" message="监听 0.0.0.0 会让同一网络中的其他设备也可能访问此端口。" confirmLabel="继续启动" onCancel={() => resolveNetworkExposure(false)} onConfirm={() => resolveNetworkExposure(true)} />
+{/if}
+
+{#if closeDialogOpen}
+  <ConfirmDialog title="退出并停止转发" message={`当前有 ${closeDialogCount} 个转发正在运行。退出会全部停止，确定继续吗？`} confirmLabel="退出应用" onCancel={cancelClose} onConfirm={confirmClose} />
+{/if}
+
+{#if preferencesOpen}
+  <PreferencesModal initial={preferences} onCancel={() => (preferencesOpen = false)} onSave={savePreferences} />
+{/if}

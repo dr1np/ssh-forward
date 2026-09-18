@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { onMount, untrack } from "svelte";
   import Icon from "./Icon.svelte";
   import type { ConnectionType, ForwardProfile } from "../types";
 
   interface Props {
     initialProfile: ForwardProfile;
     hostAliases: string[];
+    autoSelectPort: boolean;
     onSave: (profile: ForwardProfile) => void | Promise<void | boolean>;
     onStart: (profile: ForwardProfile) => void | Promise<void>;
     onRefreshHosts: () => void | Promise<void>;
@@ -15,7 +16,7 @@
     onStartAndSave: (profile: ForwardProfile) => void | Promise<void>;
   }
 
-  let { initialProfile, hostAliases, onSave, onStart, onRefreshHosts, onFindPort, onChooseIdentityFile, onReset, onStartAndSave }: Props = $props();
+  let { initialProfile, hostAliases, autoSelectPort, onSave, onStart, onRefreshHosts, onFindPort, onChooseIdentityFile, onReset, onStartAndSave }: Props = $props();
   const initial: ForwardProfile = { ...untrack(() => initialProfile) };
   let connectionType = $state<ConnectionType>(initial.connectionType);
   let name = $state(initial.name);
@@ -27,6 +28,12 @@
   let localPort = $state(String(initial.localPort));
   let remoteHost = $state(initial.remoteHost);
   let remotePort = $state(String(initial.remotePort));
+
+  onMount(() => {
+    if (autoSelectPort && !initial.name) {
+      void Promise.resolve(onFindPort(localBind)).then((port: number) => (localPort = String(port)));
+    }
+  });
 
   const buildProfile = (): ForwardProfile => ({
     ...initial,
