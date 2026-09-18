@@ -172,6 +172,49 @@ select:focus-visible {
   background: var(--ochre);
 }
 
+.demo-dot--green {
+  background: var(--sage);
+  box-shadow: 0 0 0 4px rgba(139, 157, 131, 0.14);
+}
+
+.backend-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: -10px 0 18px;
+  padding: 10px 12px;
+  color: #8d4134;
+  border: 1px solid rgba(168, 75, 59, 0.22);
+  border-radius: 12px;
+  background: rgba(168, 75, 59, 0.1);
+  font-size: 11px;
+}
+
+.backend-banner .status-dot {
+  background: #a84b3b;
+}
+
+.backend-banner > span:nth-child(2) {
+  min-width: 0;
+  flex: 1;
+}
+
+.backend-banner button {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  color: inherit;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.backend-banner button:hover {
+  background: rgba(168, 75, 59, 0.12);
+}
+
 .sidebar-nav {
   display: grid;
   gap: 5px;

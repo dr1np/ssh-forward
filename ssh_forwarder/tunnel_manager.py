@@ -108,11 +108,12 @@ class TunnelManager:
                     command,
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                close_fds=True,
+                creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0,
                 )
             except OSError as exc:
                 raise RuntimeError(f"无法启动 SSH：{exc}") from exc

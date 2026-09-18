@@ -3,6 +3,7 @@
     | "book"
     | "check"
     | "chevron"
+    | "close"
     | "clipboard"
     | "edit"
     | "file"
@@ -37,6 +38,8 @@
     <path d="M4 5.5v16M8 7h8M8 11h7" />
   {:else if name === "check"}
     <path d="m5 12 4 4L19 6" />
+  {:else if name === "close"}
+    <path d="M6 6l12 12M18 6 6 18" />
   {:else if name === "chevron"}
     <path d="m8 10 4 4 4-4" />
   {:else if name === "clipboard"}

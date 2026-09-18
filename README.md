@@ -30,7 +30,7 @@ python main.py
 
 ## 前端重构预览
 
-当前仓库同时包含第一阶段的 Svelte/Vite 前端壳，位于 [`frontend/`](./frontend/)。它使用显式标记的演示数据，暂未连接 Python 核心或 Tauri command。
+当前仓库同时包含 Svelte/Vite + Tauri 前端，位于 [`frontend/`](./frontend/)。浏览器预览使用显式标记的演示数据；Tauri debug 运行时会通过 Rust bridge 启动仓库内 Python service 并连接现有 SSH 核心。
 
 ```powershell
 cd frontend

@@ -6,12 +6,15 @@
   interface Props {
     initialProfile: ForwardProfile;
     hostAliases: string[];
-    onSave: (profile: ForwardProfile) => void;
-    onStart: (profile: ForwardProfile) => void;
+    onSave: (profile: ForwardProfile) => void | Promise<void>;
+    onStart: (profile: ForwardProfile) => void | Promise<void>;
+    onRefreshHosts: () => void | Promise<void>;
+    onFindPort: (bindAddress: ForwardProfile["localBind"]) => number | Promise<number>;
+    onChooseIdentityFile: () => string | null | Promise<string | null>;
   }
 
-  let { initialProfile, hostAliases, onSave, onStart }: Props = $props();
-  const initial = structuredClone(untrack(() => initialProfile));
+  let { initialProfile, hostAliases, onSave, onStart, onRefreshHosts, onFindPort, onChooseIdentityFile }: Props = $props();
+  const initial: ForwardProfile = { ...untrack(() => initialProfile) };
   let connectionType = $state<ConnectionType>(initial.connectionType);
   let name = $state(initial.name);
   let sshHost = $state(initial.sshHost);
@@ -25,7 +28,7 @@
 
   const buildProfile = (): ForwardProfile => ({
     ...initial,
-    name: name.trim() || "未命名转发",
+    name: name.trim() || `${remoteHost.trim() || "目标服务"}:${Number(remotePort) || 80}`,
     connectionType,
     sshHost: sshHost.trim(),
     sshPort: Number(sshPort) || 22,
@@ -60,12 +63,13 @@
     <div class="field-block">
       <label for="config-host">SSH Config 主机</label>
       <div class="field-with-action">
-        <select id="config-host" bind:value={sshHost}>
+        <input id="config-host" list="ssh-host-aliases" bind:value={sshHost} placeholder="例如 production" />
+        <datalist id="ssh-host-aliases">
           {#each hostAliases as alias}
             <option value={alias}>{alias}{alias === "production" ? " · 示例" : ""}</option>
           {/each}
-        </select>
-        <button class="small-button" type="button" title="刷新 SSH Config" aria-label="刷新 SSH Config"><Icon name="refresh" size={16} /></button>
+        </datalist>
+        <button class="small-button" type="button" title="刷新 SSH Config" aria-label="刷新 SSH Config" onclick={onRefreshHosts}><Icon name="refresh" size={16} /></button>
       </div>
       <p class="field-help">列表来自用户 SSH 配置文件，可直接选择别名。</p>
     </div>
@@ -87,7 +91,10 @@
       </div>
       <div class="field-block">
         <label for="identity-file">私钥路径</label>
-        <input id="identity-file" bind:value={identityFile} placeholder="可选" />
+        <div class="field-with-action">
+          <input id="identity-file" bind:value={identityFile} placeholder="可选" />
+          <button class="small-button" type="button" title="选择 SSH 私钥" aria-label="选择 SSH 私钥" onclick={async () => { const selected = await onChooseIdentityFile(); if (selected) identityFile = selected; }}><Icon name="file" size={16} /></button>
+        </div>
       </div>
     </div>
   {/if}
@@ -120,7 +127,7 @@
       <label for="local-port">本地端口</label>
       <div class="field-with-action">
         <input id="local-port" bind:value={localPort} inputmode="numeric" />
-        <button class="small-button small-button--text" type="button" onclick={() => (localPort = "${Math.floor(10000 + Math.random() * 2000)}")}>自动</button>
+        <button class="small-button small-button--text" type="button" onclick={async () => (localPort = String(await onFindPort(localBind)))}>自动</button>
       </div>
     </div>
   </div>
