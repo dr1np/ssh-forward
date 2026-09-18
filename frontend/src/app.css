@@ -1128,6 +1128,11 @@ select:focus {
   flex: 0 0 auto;
 }
 
+.tunnel-restart {
+  min-height: 34px;
+  padding: 0 10px;
+}
+
 .log-panel {
   min-height: 0;
   display: flex;

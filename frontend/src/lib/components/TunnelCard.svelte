@@ -11,10 +11,11 @@
     onCopy: (tunnel: ActiveTunnel) => void;
     onPortChange: (tunnel: ActiveTunnel) => void;
     onStop: (tunnel: ActiveTunnel) => void;
+    onRestart: (tunnel: ActiveTunnel) => void;
     onDelete: (tunnel: ActiveTunnel) => void;
   }
 
-  let { tunnel, selected = false, onSelect, onCopy, onPortChange, onStop, onDelete }: Props = $props();
+  let { tunnel, selected = false, onSelect, onCopy, onPortChange, onStop, onRestart, onDelete }: Props = $props();
 </script>
 
 <article class:selected class:sample-card={tunnel.isSample} class="tunnel-card">
@@ -56,6 +57,7 @@
       <button class="icon-button" type="button" title="更改本地端口" aria-label="更改本地端口" disabled={tunnel.status !== "running" && tunnel.status !== "connecting"} onclick={() => onPortChange(tunnel)}><Icon name="tune" size={16} /></button>
       <button class="icon-button icon-button--danger" type="button" title="停止转发" aria-label="停止转发" disabled={tunnel.status !== "running" && tunnel.status !== "connecting"} onclick={() => onStop(tunnel)}><Icon name="stop" size={16} /></button>
       {#if tunnel.status === "stopped" || tunnel.status === "failed"}
+        <button class="button button--secondary button--small tunnel-restart" type="button" onclick={() => onRestart(tunnel)}><Icon name="refresh" size={14} /> 恢复转发</button>
         <button class="icon-button icon-button--danger" type="button" title="删除记录" aria-label="删除记录" onclick={() => onDelete(tunnel)}><Icon name="trash" size={16} /></button>
       {/if}
     </div>

@@ -371,6 +371,48 @@
     addLog("info", `已停止“${tunnel.profile.name}”。`);
   };
 
+  const restartTunnel = async (tunnel: ActiveTunnel) => {
+    if (tunnel.status === "running" || tunnel.status === "connecting") return;
+    if (tunnel.profile.localBind === "0.0.0.0" && !(await askNetworkExposure())) return;
+
+    if (desktopRuntime) {
+      try {
+        const active = await startBackendTunnel(tunnel.profile);
+        try {
+          await deleteBackendTunnel(tunnel.id);
+        } catch (error) {
+          backendError = String(error);
+          addLog("error", `旧结束记录清理失败：${backendError}`);
+        }
+        tunnels = tunnels.map((item) => (item.id === tunnel.id ? active : item));
+        selectedTunnelId = active.id;
+        activeTab = "running";
+        addLog("info", `已恢复“${tunnel.profile.name}”：${formatLocalEndpoint(tunnel.profile)} → ${formatRemoteEndpoint(tunnel.profile)}。`);
+      } catch (error) {
+        backendError = String(error);
+        addLog("error", `恢复转发失败：${backendError}`);
+      }
+      return;
+    }
+
+    const restored: ActiveTunnel = {
+      ...tunnel,
+      id: `demo-tunnel-${Date.now()}`,
+      status: "connecting",
+      elapsed: "00:00",
+      lastError: "",
+      isSample: true,
+    };
+    tunnels = tunnels.map((item) => (item.id === tunnel.id ? restored : item));
+    selectedTunnelId = restored.id;
+    activeTab = "running";
+    addLog("info", `正在恢复“${tunnel.profile.name}”。`);
+    window.setTimeout(() => {
+      tunnels = tunnels.map((item) => (item.id === restored.id ? { ...item, status: "running", elapsed: "00:01" } : item));
+      addLog("success", `“${tunnel.profile.name}”已恢复转发。`);
+    }, 850);
+  };
+
   const changePort = async (tunnel: ActiveTunnel) => {
     if (tunnel.status !== "running" && tunnel.status !== "connecting") return;
     portDialogTunnel = tunnel;
@@ -505,7 +547,7 @@
         {#if activeTab === "running"}
           <div class="tunnel-list">
             {#each tunnels as tunnel (tunnel.id)}
-              <TunnelCard tunnel={tunnel} selected={selectedTunnelId === tunnel.id} onSelect={selectTunnel} onCopy={copyEndpoint} onPortChange={changePort} onStop={stopTunnel} onDelete={requestDeleteTunnel} />
+              <TunnelCard tunnel={tunnel} selected={selectedTunnelId === tunnel.id} onSelect={selectTunnel} onCopy={copyEndpoint} onPortChange={changePort} onStop={stopTunnel} onRestart={restartTunnel} onDelete={requestDeleteTunnel} />
             {:else}
               <div class="empty-state">
                 <span class="empty-state__icon"><Icon name="link" size={22} /></span>
