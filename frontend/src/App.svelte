@@ -23,6 +23,7 @@
   } from "./lib/backend";
   import { sampleLogs, sampleProfiles, sampleTunnels } from "./lib/mock";
   import type { ActiveTunnel, ForwardProfile, LogEntry, WorkspaceTab } from "./lib/types";
+  import { restoreWindowState, saveWindowState } from "./lib/window-state";
 
   const desktopRuntime = isDesktopRuntime();
   let activeTab = $state<WorkspaceTab>("running");
@@ -137,6 +138,7 @@
   let unlistenBackend: (() => void) | undefined;
   onMount(() => {
     if (!desktopRuntime) return;
+    void restoreWindowState();
     void (async () => {
       try {
         unlistenBackend = await subscribeBackendEvents(handleBackendEvent);
@@ -149,6 +151,7 @@
     return () => {
       window.clearInterval(timer);
       unlistenBackend?.();
+      void saveWindowState();
     };
   });
 
