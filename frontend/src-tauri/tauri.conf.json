@@ -17,7 +17,8 @@
         "height": 820,
         "minWidth": 960,
         "minHeight": 640,
-        "decorations": false,
+        "decorations": true,
+        "theme": "Light",
         "resizable": true,
         "fullscreen": false
       }

@@ -77,11 +77,11 @@ select:focus-visible {
   min-height: 0;
   overflow: hidden;
   background: var(--sand);
-  grid-template-rows: 34px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .window-titlebar {
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: space-between;
   min-width: 0;
