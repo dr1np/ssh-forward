@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import Icon from "./lib/components/Icon.svelte";
   import LogPanel from "./lib/components/LogPanel.svelte";
   import ProfileEditor from "./lib/components/ProfileEditor.svelte";
@@ -22,6 +23,7 @@
     subscribeBackendEvents,
   } from "./lib/backend";
   import { sampleLogs, sampleProfiles, sampleTunnels } from "./lib/mock";
+  import { formatLocalEndpoint, formatRemoteEndpoint } from "./lib/endpoints";
   import type { ActiveTunnel, ForwardProfile, LogEntry, WorkspaceTab } from "./lib/types";
   import { restoreWindowState, saveWindowState } from "./lib/window-state";
 
@@ -138,6 +140,12 @@
   let unlistenBackend: (() => void) | undefined;
   onMount(() => {
     if (!desktopRuntime) return;
+    const closeListener = getCurrentWindow().onCloseRequested((event) => {
+      const runningCount = tunnels.filter((item) => item.status === "running" || item.status === "connecting").length;
+      if (runningCount > 0 && !window.confirm(`当前有 ${runningCount} 个转发正在运行。退出会全部停止，确定继续吗？`)) {
+        event.preventDefault();
+      }
+    });
     void restoreWindowState();
     void (async () => {
       try {
@@ -151,6 +159,7 @@
     return () => {
       window.clearInterval(timer);
       unlistenBackend?.();
+      void closeListener.then((unlisten) => unlisten());
       void saveWindowState();
     };
   });
@@ -253,7 +262,7 @@
     tunnels = [newTunnel, ...tunnels];
     selectedTunnelId = newTunnel.id;
     activeTab = "running";
-    addLog("info", `正在启动“${profile.name}”：localhost:${profile.localPort} → ${profile.remoteHost}:${profile.remotePort}。`);
+    addLog("info", `正在启动“${profile.name}”：${formatLocalEndpoint(profile)} → ${formatRemoteEndpoint(profile)}。`);
     window.setTimeout(() => {
       tunnels = tunnels.map((tunnel) => (tunnel.id === newTunnel.id ? { ...tunnel, status: "running", elapsed: "00:01" } : tunnel));
       addLog("success", `“${profile.name}”已开始转发。`);
@@ -300,7 +309,7 @@
   };
 
   const copyEndpoint = async (tunnel: ActiveTunnel) => {
-    const endpoint = tunnel.profile.localBind === "::1" ? `[${tunnel.profile.localBind}]:${tunnel.profile.localPort}` : `localhost:${tunnel.profile.localPort}`;
+    const endpoint = formatLocalEndpoint(tunnel.profile);
     copiedEndpoint = endpoint;
     addLog("success", `已复制本地地址：${endpoint}。`);
     try {
@@ -402,11 +411,11 @@
         {:else if activeTab === "favorites"}
           <div class="favorites-list">
             {#each profiles as profile (profile.id)}
-              <article class="favorite-row">
+              <article class="favorite-row" ondblclick={() => startTunnel(profile)}>
                 <div class="favorite-icon"><Icon name="book" size={17} /></div>
                 <div class="favorite-main">
                   <div class="eyebrow-row"><h3>{profile.name}</h3>{#if profile.isSample}<span class="sample-label">演示数据</span>{/if}</div>
-                  <p>{profile.sshHost} · localhost:{profile.localPort} → {profile.remoteHost}:{profile.remotePort}</p>
+                  <p>{profile.sshHost} · {formatLocalEndpoint(profile)} → {formatRemoteEndpoint(profile)}</p>
                 </div>
                 <div class="favorite-actions">
                   <button class="icon-button" type="button" title="编辑配置" aria-label="编辑配置" onclick={() => selectProfile(profile)}><Icon name="edit" size={16} /></button>

@@ -30,16 +30,16 @@
 
   const buildProfile = (): ForwardProfile => ({
     ...initial,
-    name: name.trim() || `${remoteHost.trim() || "目标服务"}:${Number(remotePort) || 80}`,
+    name: name.trim() || `${remoteHost.trim() || "目标服务"}:${Number.isFinite(Number(remotePort)) ? Number(remotePort) : remotePort.trim()}`,
     connectionType,
     sshHost: sshHost.trim(),
-    sshPort: Number(sshPort) || 22,
+    sshPort: Number(sshPort),
     sshUser: sshUser.trim(),
     identityFile: identityFile.trim(),
     localBind,
-    localPort: Number(localPort) || 8080,
+    localPort: Number(localPort),
     remoteHost: remoteHost.trim(),
-    remotePort: Number(remotePort) || 80,
+    remotePort: Number(remotePort),
   });
 </script>
 
