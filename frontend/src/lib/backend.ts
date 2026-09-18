@@ -118,6 +118,11 @@ export async function loadTunnels(): Promise<ActiveTunnel[]> {
   return result.tunnels.map(fromBackendTunnel);
 }
 
+export async function clearFinishedTunnels(): Promise<number> {
+  const result = await request<{ removed: number }>("clear_finished");
+  return result.removed;
+}
+
 export async function saveProfile(profile: ForwardProfile): Promise<ForwardProfile> {
   const result = await request<{ profile: BackendProfile }>("save_profile", {
     profile: toBackendProfile(profile),

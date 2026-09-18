@@ -6,14 +6,16 @@
   interface Props {
     initialProfile: ForwardProfile;
     hostAliases: string[];
-    onSave: (profile: ForwardProfile) => void | Promise<void>;
+    onSave: (profile: ForwardProfile) => void | Promise<void | boolean>;
     onStart: (profile: ForwardProfile) => void | Promise<void>;
     onRefreshHosts: () => void | Promise<void>;
     onFindPort: (bindAddress: ForwardProfile["localBind"]) => number | Promise<number>;
     onChooseIdentityFile: () => string | null | Promise<string | null>;
+    onReset: () => void;
+    onStartAndSave: (profile: ForwardProfile) => void | Promise<void>;
   }
 
-  let { initialProfile, hostAliases, onSave, onStart, onRefreshHosts, onFindPort, onChooseIdentityFile }: Props = $props();
+  let { initialProfile, hostAliases, onSave, onStart, onRefreshHosts, onFindPort, onChooseIdentityFile, onReset, onStartAndSave }: Props = $props();
   const initial: ForwardProfile = { ...untrack(() => initialProfile) };
   let connectionType = $state<ConnectionType>(initial.connectionType);
   let name = $state(initial.name);
@@ -47,7 +49,8 @@
       <span class="section-kicker">连接配置</span>
       <h2>新建转发</h2>
     </div>
-    <span class="section-index">01</span>
+      <span class="section-index">01</span>
+      <button class="button button--quiet editor-reset" type="button" onclick={onReset}>清空</button>
   </div>
 
   <div class="connection-tabs" role="tablist" aria-label="连接类型">
@@ -148,5 +151,6 @@
   <div class="editor-actions">
     <button class="button button--primary" type="button" onclick={() => onStart(buildProfile())}><Icon name="play" size={16} /> 启动转发</button>
     <button class="button button--secondary" type="button" onclick={() => onSave(buildProfile())}><Icon name="book" size={16} /> 保存收藏</button>
+    <button class="button button--secondary editor-actions__wide" type="button" onclick={() => onStartAndSave(buildProfile())}><Icon name="play" size={16} /> 启动并收藏</button>
   </div>
 </section>

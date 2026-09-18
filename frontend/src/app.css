@@ -469,6 +469,12 @@ select:focus-visible {
   margin-bottom: 16px;
 }
 
+.editor-reset {
+  min-height: 30px;
+  margin-left: auto;
+  padding: 0 9px;
+}
+
 .section-index {
   display: grid;
   width: 30px;
@@ -610,7 +616,12 @@ select:focus {
 }
 
 .editor-actions {
+  flex-wrap: wrap;
   gap: 8px;
+}
+
+.editor-actions__wide {
+  flex-basis: 100%;
 }
 
 .button {

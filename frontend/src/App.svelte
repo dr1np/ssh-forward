@@ -9,6 +9,7 @@
     backendLogToEntry,
     changeTunnelPort,
     chooseIdentityFile,
+    clearFinishedTunnels,
     deleteProfile as deleteBackendProfile,
     findAvailablePort,
     isDesktopRuntime,
@@ -66,6 +67,11 @@
     selectedProfile = { ...profile };
     editorKey += 1;
     activeTab = "running";
+  };
+
+  const resetEditor = () => {
+    selectedProfile = makeBlankProfile(hostAliases[0] ?? "");
+    editorKey += 1;
   };
 
   const hydrateDesktop = async () => {
@@ -146,7 +152,7 @@
     };
   });
 
-  const saveProfile = async (profile: ForwardProfile) => {
+  const saveProfile = async (profile: ForwardProfile): Promise<boolean> => {
     try {
       const saved = desktopRuntime ? await saveBackendProfile(profile) : profile;
       const existing = profiles.some((item) => item.id === saved.id);
@@ -155,10 +161,16 @@
       editorKey += 1;
       activeTab = "favorites";
       addLog("success", `已保存收藏“${saved.name}”。`);
+      return true;
     } catch (error) {
       backendError = String(error);
       addLog("error", `收藏保存失败：${backendError}`);
+      return false;
     }
+  };
+
+  const startAndSave = async (profile: ForwardProfile) => {
+    if (await saveProfile(profile)) await startTunnel(profile);
   };
 
   const deleteProfile = async (profile: ForwardProfile) => {
@@ -191,6 +203,17 @@
   const getFreePort = async (bindAddress: string) => {
     if (desktopRuntime) return findAvailablePort(bindAddress);
     return Math.floor(10000 + Math.random() * 2000);
+  };
+
+  const clearFinished = async () => {
+    try {
+      if (desktopRuntime) await clearFinishedTunnels();
+      tunnels = tunnels.filter((item) => item.status === "running" || item.status === "connecting");
+      addLog("info", "已清理结束的转发记录。" );
+    } catch (error) {
+      backendError = String(error);
+      addLog("error", `清理结束记录失败：${backendError}`);
+    }
   };
 
   const chooseIdentityPath = async () => {
@@ -344,7 +367,7 @@
     <div class="content-grid">
       <div class="editor-column">
         {#key editorKey}
-          <ProfileEditor initialProfile={selectedProfile} {hostAliases} onSave={saveProfile} onStart={startTunnel} onRefreshHosts={refreshHosts} onFindPort={getFreePort} onChooseIdentityFile={chooseIdentityPath} />
+          <ProfileEditor initialProfile={selectedProfile} {hostAliases} onSave={saveProfile} onStart={startTunnel} onRefreshHosts={refreshHosts} onFindPort={getFreePort} onChooseIdentityFile={chooseIdentityPath} onReset={resetEditor} onStartAndSave={startAndSave} />
         {/key}
       </div>
 
@@ -355,7 +378,7 @@
             <h2>{activeTab === "running" ? "运行中的转发" : activeTab === "favorites" ? "收藏配置" : "运行日志"}</h2>
           </div>
           {#if activeTab === "running"}
-            <div class="workspace-summary"><span class="summary-number">{tunnels.filter((item) => item.status === "running").length}</span><span>条连接正在运行</span></div>
+            <div class="workspace-summary"><span class="summary-number">{tunnels.filter((item) => item.status === "running").length}</span><span>条连接正在运行</span>{#if tunnels.some((item) => item.status === "stopped" || item.status === "failed")}<button class="button button--quiet" type="button" onclick={clearFinished}>清理已结束</button>{/if}</div>
           {:else if activeTab === "favorites"}
             <button class="button button--secondary" type="button" onclick={() => (activeTab = "running")}><Icon name="plus" size={16} /> 新建转发</button>
           {/if}

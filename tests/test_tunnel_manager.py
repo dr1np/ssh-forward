@@ -73,6 +73,7 @@ class TunnelManagerTests(unittest.TestCase):
 
         active = manager.start(make_profile())
 
+        self.assertTrue(popen.call_args.kwargs["close_fds"])  # type: ignore[attr-defined]
         self.assertTrue(process.wait_finished.wait(1))
         for _ in range(100):
             if active.ended_at is not None:

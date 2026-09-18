@@ -115,6 +115,13 @@ class BackendService:
             }
         if method == "get_tunnels":
             return {"tunnels": [_serialize_tunnel(item) for item in self.manager.snapshot()]}
+        if method == "clear_finished":
+            removed = 0
+            for tunnel in self.manager.snapshot():
+                if tunnel.process.poll() is not None:
+                    self.manager.remove_finished(tunnel.id)
+                    removed += 1
+            return {"removed": removed}
         if method == "save_profile":
             profile = ForwardProfile.from_dict(params["profile"])
             self.store.upsert(profile)
