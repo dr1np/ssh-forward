@@ -21,4 +21,13 @@ npm run dev
 ```powershell
 npm run check
 npm run build
+npm run tauri dev
+```
+
+`npm run tauri dev` 需要 Windows 的 MSVC Rust toolchain、Visual Studio C++ Build Tools 和 WebView2。当前 Tauri 壳只加载 Svelte 演示界面，尚未接入 Python sidecar。
+
+Tauri debug 构建：
+
+```powershell
+npm run tauri build -- --debug --no-bundle
 ```

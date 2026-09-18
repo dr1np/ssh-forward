@@ -38,6 +38,12 @@ npm install
 npm run dev
 ```
 
+安装 Rust、Visual Studio C++ Build Tools 和 WebView2 后，可运行桌面壳：
+
+```powershell
+npm run tauri dev
+```
+
 检查和生产构建：
 
 ```powershell
