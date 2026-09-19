@@ -7,7 +7,6 @@
   import PortDialog from "./lib/components/PortDialog.svelte";
   import PreferencesModal from "./lib/components/PreferencesModal.svelte";
   import ProfileEditor from "./lib/components/ProfileEditor.svelte";
-  import StatusBadge from "./lib/components/StatusBadge.svelte";
   import TunnelCard from "./lib/components/TunnelCard.svelte";
   import {
     backendLogToEntry,
@@ -20,6 +19,7 @@
     isDesktopRuntime,
     loadHosts,
     loadSnapshot,
+    loadTrayStatus,
     loadTunnels,
     saveProfile as saveBackendProfile,
     startTunnel as startBackendTunnel,
@@ -35,16 +35,21 @@
   const desktopRuntime = isDesktopRuntime();
   let preferences = $state<AppPreferences>(readPreferences());
   let activeTab = $state<WorkspaceTab>("running");
-  let profiles = $state<ForwardProfile[]>([...sampleProfiles]);
-  let tunnels = $state<ActiveTunnel[]>([...sampleTunnels]);
-  let logs = $state<LogEntry[]>([...sampleLogs]);
+  let profiles = $state<ForwardProfile[]>(desktopRuntime ? [] : [...sampleProfiles]);
+  let tunnels = $state<ActiveTunnel[]>(desktopRuntime ? [] : [...sampleTunnels]);
+  let logs = $state<LogEntry[]>(desktopRuntime ? [] : [...sampleLogs]);
   let selectedTunnelId = $state("sample-tunnel-production");
   let selectedProfile = $state<ForwardProfile>(desktopRuntime ? makeBlankProfile() : sampleProfiles[0]);
   let editorKey = $state(0);
   let copiedEndpoint = $state("");
   let backendReady = $state(!desktopRuntime);
   let backendError = $state("");
-  let hostAliases = $state(["production", "staging", "bastion"]);
+  let trayAvailable = $state(!desktopRuntime);
+  let hostAliases = $state<string[]>(desktopRuntime ? [] : ["production", "staging", "bastion"]);
+  let sshAvailable = $state(false);
+  let pendingStarts = $state<string[]>([]);
+  let pendingTunnels = $state<string[]>([]);
+  let refreshing = false;
   let preferencesOpen = $state(false);
   let portDialogTunnel = $state<ActiveTunnel | null>(null);
   let profileToDelete = $state<ForwardProfile | null>(null);
@@ -74,7 +79,7 @@
   const addLog = (level: LogEntry["level"], message: string) => {
     const now = new Date();
     const time = now.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    logs = [{ id: `${Date.now()}-${Math.random()}`, time, level, message }, ...logs];
+    logs = [{ id: `${Date.now()}-${Math.random()}`, time, level, message }, ...logs].slice(0, 500);
   };
 
   const selectTunnel = (id: string) => {
@@ -90,16 +95,13 @@
   const resetEditor = () => {
     selectedProfile = makeBlankProfile(hostAliases[0] ?? "");
     editorKey += 1;
+    activeTab = "running";
   };
 
   const savePreferences = (next: AppPreferences) => {
     preferences = next;
     writePreferences(next);
     preferencesOpen = false;
-    if (!selectedProfile.name) {
-      selectedProfile = { ...selectedProfile, localBind: next.defaultLocalBind };
-      editorKey += 1;
-    }
     addLog("success", "偏好设置已保存。");
   };
 
@@ -125,6 +127,7 @@
     closeDialogOpen = false;
     closeDialogPending = true;
     try {
+      await saveWindowState();
       await getCurrentWindow().close();
     } catch {
       closeDialogPending = false;
@@ -177,6 +180,8 @@
     try {
       const snapshot = await loadSnapshot();
       hostAliases = snapshot.hosts;
+      sshAvailable = snapshot.sshAvailable;
+      backendError = "";
       profiles = snapshot.profiles;
       tunnels = snapshot.tunnels;
       logs = [];
@@ -191,11 +196,14 @@
   };
 
   const refreshDesktopTunnels = async () => {
-    if (!desktopRuntime || !backendReady) return;
+    if (!desktopRuntime || !backendReady || refreshing || pendingTunnels.length) return;
+    refreshing = true;
     try {
       tunnels = await loadTunnels();
     } catch (error) {
       backendError = String(error);
+    } finally {
+      refreshing = false;
     }
   };
 
@@ -226,7 +234,7 @@
         : [converted, ...tunnels];
     }
     const entry = backendLogToEntry(event);
-    if (entry) logs = [entry, ...logs];
+    if (entry) logs = [entry, ...logs].slice(0, 500);
     if (event.event === "backend_exited") {
       backendReady = false;
       backendError = event.message ?? "桌面后端已退出。";
@@ -236,23 +244,45 @@
   let unlistenBackend: (() => void) | undefined;
   onMount(() => {
     if (!desktopRuntime) return;
-    void getCurrentWindow().setTitle("SSH 端口转发助手");
-    const closeListener = getCurrentWindow().onCloseRequested((event) => {
+    void (async () => {
+      const window = getCurrentWindow();
+      await window.show();
+      await window.unminimize();
+      await window.setFocus();
+      await window.setTitle("SSH 端口转发助手");
+    })();
+    const closeListener = getCurrentWindow().onCloseRequested(async (event) => {
       const runningCount = tunnels.filter((item) => item.status === "running" || item.status === "connecting").length;
       if (closeDialogPending) {
         closeDialogPending = false;
+        return;
+      }
+      if (trayAvailable && preferences.closeToTray) {
+        event.preventDefault();
+        await saveWindowState();
+        await getCurrentWindow().hide();
         return;
       }
       if (preferences.confirmOnExit && runningCount > 0) {
         event.preventDefault();
         closeDialogCount = runningCount;
         closeDialogOpen = true;
+      } else {
+        event.preventDefault();
+        await saveWindowState();
+        closeDialogPending = true;
+        await getCurrentWindow().close();
       }
     });
     void restoreWindowState();
     void (async () => {
       try {
         unlistenBackend = await subscribeBackendEvents(handleBackendEvent);
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          trayAvailable = await loadTrayStatus();
+          if (trayAvailable) break;
+          await new Promise((resolve) => window.setTimeout(resolve, 100));
+        }
       } catch (error) {
         backendError = String(error);
       }
@@ -320,6 +350,16 @@
   };
 
   const startTunnel = async (profile: ForwardProfile) => {
+    if (pendingStarts.includes(profile.id) || (desktopRuntime && !backendReady)) return;
+    pendingStarts = [...pendingStarts, profile.id];
+    try {
+      await performStart(profile);
+    } finally {
+      pendingStarts = pendingStarts.filter((id) => id !== profile.id);
+    }
+  };
+
+  const performStart = async (profile: ForwardProfile) => {
     if (profile.localBind === "0.0.0.0" && !(await askNetworkExposure())) {
       return;
     }
@@ -357,9 +397,16 @@
   };
 
   const stopTunnel = async (tunnel: ActiveTunnel) => {
+    if (pendingTunnels.includes(tunnel.id)) return;
+    pendingTunnels = [...pendingTunnels, tunnel.id];
+    try { await performStop(tunnel); } finally { pendingTunnels = pendingTunnels.filter((id) => id !== tunnel.id); }
+  };
+
+  const performStop = async (tunnel: ActiveTunnel) => {
     if (desktopRuntime) {
       try {
         await stopBackendTunnel(tunnel.id);
+        tunnels = await loadTunnels();
         addLog("info", `已停止“${tunnel.profile.name}”。`);
       } catch (error) {
         backendError = String(error);
@@ -372,6 +419,12 @@
   };
 
   const restartTunnel = async (tunnel: ActiveTunnel) => {
+    if (pendingTunnels.includes(tunnel.id)) return;
+    pendingTunnels = [...pendingTunnels, tunnel.id];
+    try { await performRestart(tunnel); } finally { pendingTunnels = pendingTunnels.filter((id) => id !== tunnel.id); }
+  };
+
+  const performRestart = async (tunnel: ActiveTunnel) => {
     if (tunnel.status === "running" || tunnel.status === "connecting") return;
     if (tunnel.profile.localBind === "0.0.0.0" && !(await askNetworkExposure())) return;
 
@@ -384,7 +437,7 @@
           backendError = String(error);
           addLog("error", `旧结束记录清理失败：${backendError}`);
         }
-        tunnels = tunnels.map((item) => (item.id === tunnel.id ? active : item));
+        tunnels = await loadTunnels();
         selectedTunnelId = active.id;
         activeTab = "running";
         addLog("info", `已恢复“${tunnel.profile.name}”：${formatLocalEndpoint(tunnel.profile)} → ${formatRemoteEndpoint(tunnel.profile)}。`);
@@ -420,19 +473,22 @@
 
   const submitPortChange = async (nextPort: number) => {
     const tunnel = portDialogTunnel;
-    portDialogTunnel = null;
     if (!tunnel) return;
     if (desktopRuntime) {
       try {
         const replacement = await changeTunnelPort(tunnel.id, nextPort);
-        tunnels = tunnels.map((item) => (item.id === tunnel.id ? replacement : item));
+        tunnels = await loadTunnels();
+        selectedTunnelId = replacement.id;
+        portDialogTunnel = null;
         addLog("success", `已将“${tunnel.profile.name}”的本地端口改为 ${nextPort}。`);
       } catch (error) {
         backendError = String(error);
         addLog("error", `更改端口失败：${backendError}`);
+        throw error;
       }
       return;
     }
+    portDialogTunnel = null;
     const profile = { ...tunnel.profile, localPort: nextPort };
     tunnels = tunnels.map((item) => (item.id === tunnel.id ? { ...item, profile } : item));
     addLog("success", `已将“${tunnel.profile.name}”的本地端口改为 ${nextPort}。`);
@@ -440,12 +496,14 @@
 
   const copyEndpoint = async (tunnel: ActiveTunnel) => {
     const endpoint = formatLocalEndpoint(tunnel.profile);
-    copiedEndpoint = endpoint;
-    addLog("success", `已复制本地地址：${endpoint}。`);
     try {
-      await navigator.clipboard?.writeText(endpoint);
-    } catch {
-      // Clipboard permission is not available in every preview environment.
+      if (!navigator.clipboard) throw new Error("剪贴板不可用");
+      await navigator.clipboard.writeText(endpoint);
+      copiedEndpoint = endpoint;
+      addLog("success", `已复制本地地址：${endpoint}。`);
+    } catch (error) {
+      backendError = `无法复制地址，请手动复制：${endpoint}。${String(error)}`;
+      return;
     }
     window.setTimeout(() => (copiedEndpoint = ""), 2200);
   };
@@ -487,7 +545,7 @@
   <div class="app-shell">
   <aside class="sidebar">
 
-    <div class="sidebar-demo-note"><span class:demo-dot--green={desktopRuntime && backendReady} class="demo-dot"></span> {desktopRuntime ? (backendReady ? "桌面后端 · 已连接" : "桌面后端 · 连接中") : "前端预览 · 演示数据"}</div>
+    <div class="sidebar-demo-note"><span class:demo-dot--green={desktopRuntime && backendReady} class="demo-dot"></span> {desktopRuntime ? (backendReady ? "桌面后端 · 已连接" : (backendError ? "桌面后端 · 未连接" : "桌面后端 · 连接中")) : "前端预览 · 演示数据"}</div>
 
     <nav class="sidebar-nav" aria-label="工作区导航">
       <button class:active={activeTab === "running"} type="button" onclick={() => (activeTab = "running")}><Icon name="link" size={17} /> 运行中的转发 <span>{tunnels.filter((item) => item.status === "running" || item.status === "connecting").length}</span></button>
@@ -497,13 +555,13 @@
 
     <div class="sidebar-section-label">系统</div>
     <div class="sidebar-nav sidebar-nav--secondary">
-      <button type="button"><Icon name="server" size={17} /> OpenSSH <small>{desktopRuntime && backendReady ? "已连接" : "预览"}</small></button>
+      <div class="system-status"><Icon name="server" size={17} /> OpenSSH <small>{desktopRuntime ? (backendReady ? (sshAvailable ? "可用" : "未安装") : "待检测") : "预览"}</small></div>
       <button type="button" onclick={() => (preferencesOpen = true)}><Icon name="sliders" size={17} /> 偏好设置</button>
     </div>
 
     <div class="sidebar-footer">
-      <div class="sidebar-footer__status"><span class="status-dot status-dot--green"></span><span>本机服务正常</span></div>
-      <div class="sidebar-footer__meta">{desktopRuntime ? "Python bridge · 开发版" : "Windows OpenSSH · 预览版"}</div>
+      <div class="sidebar-footer__status"><span class="status-dot" class:status-dot--green={backendReady}></span><span>{desktopRuntime ? (backendReady ? "本机服务正常" : "本机服务未连接") : "演示模式"}</span></div>
+      <div class="sidebar-footer__meta">{desktopRuntime ? "SSH Forwarder · v0.1.0" : "SSH Forwarder · 预览版"}</div>
     </div>
   </aside>
 
@@ -516,18 +574,18 @@
       <div class="topbar-actions">
         {#if copiedEndpoint}<span class="toast"><Icon name="check" size={15} /> 已复制 {copiedEndpoint}</span>{/if}
         <button class="icon-button icon-button--large" type="button" title="打开偏好设置" aria-label="打开偏好设置" onclick={() => (preferencesOpen = true)}><Icon name="sliders" size={18} /></button>
-        <button class="profile-chip" type="button" aria-label="打开应用菜单"><span class="profile-avatar">T</span><span>本机</span><Icon name="chevron" size={15} /></button>
+        <span class="profile-chip"><Icon name="server" size={16} /><span>本机</span></span>
       </div>
     </header>
 
     {#if backendError}
-      <div class="backend-banner"><span class="status-dot"></span><span>{backendError}</span><button type="button" onclick={() => (backendError = "")} aria-label="关闭错误提示"><Icon name="close" size={15} /></button></div>
+      <div class="backend-banner" role="alert"><span class="status-dot"></span><span>{backendError}</span>{#if !backendReady}<button class="button button--secondary" type="button" onclick={hydrateDesktop}>重新连接</button>{/if}<button type="button" onclick={() => (backendError = "")} aria-label="关闭错误提示"><Icon name="close" size={15} /></button></div>
     {/if}
 
     <div class="content-grid">
       <div class="editor-column">
         {#key editorKey}
-          <ProfileEditor initialProfile={selectedProfile} {hostAliases} autoSelectPort={preferences.autoSelectPort} onSave={saveProfile} onStart={startTunnel} onRefreshHosts={refreshHosts} onFindPort={getFreePort} onChooseIdentityFile={chooseIdentityPath} onReset={resetEditor} onStartAndSave={startAndSave} />
+          <ProfileEditor disabled={!backendReady} initialProfile={selectedProfile} {hostAliases} autoSelectPort={preferences.autoSelectPort} onSave={saveProfile} onStart={startTunnel} onRefreshHosts={refreshHosts} onFindPort={getFreePort} onChooseIdentityFile={chooseIdentityPath} onReset={resetEditor} onStartAndSave={startAndSave} />
         {/key}
       </div>
 
@@ -540,14 +598,14 @@
           {#if activeTab === "running"}
             <div class="workspace-summary"><span class="summary-number">{tunnels.filter((item) => item.status === "running").length}</span><span>条连接正在运行</span>{#if tunnels.some((item) => item.status === "stopped" || item.status === "failed")}<button class="button button--quiet" type="button" onclick={clearFinished}>清理已结束</button>{/if}</div>
           {:else if activeTab === "favorites"}
-            <button class="button button--secondary" type="button" onclick={() => (activeTab = "running")}><Icon name="plus" size={16} /> 新建转发</button>
+            <button class="button button--secondary" type="button" onclick={resetEditor}><Icon name="plus" size={16} /> 新建转发</button>
           {/if}
         </div>
 
         {#if activeTab === "running"}
           <div class="tunnel-list">
             {#each tunnels as tunnel (tunnel.id)}
-              <TunnelCard tunnel={tunnel} selected={selectedTunnelId === tunnel.id} onSelect={selectTunnel} onCopy={copyEndpoint} onPortChange={changePort} onStop={stopTunnel} onRestart={restartTunnel} onDelete={requestDeleteTunnel} />
+              <TunnelCard busy={pendingTunnels.includes(tunnel.id)} tunnel={tunnel} selected={selectedTunnelId === tunnel.id} onSelect={selectTunnel} onCopy={copyEndpoint} onPortChange={changePort} onStop={stopTunnel} onRestart={restartTunnel} onDelete={requestDeleteTunnel} />
             {:else}
               <div class="empty-state">
                 <span class="empty-state__icon"><Icon name="link" size={22} /></span>
@@ -559,7 +617,7 @@
         {:else if activeTab === "favorites"}
           <div class="favorites-list">
             {#each profiles as profile (profile.id)}
-              <article class="favorite-row" ondblclick={() => startTunnel(profile)}>
+              <article class="favorite-row" ondblclick={(event) => { if (!(event.target as HTMLElement).closest("button")) void startTunnel(profile); }}>
                 <div class="favorite-icon"><Icon name="book" size={17} /></div>
                 <div class="favorite-main">
                   <div class="eyebrow-row"><h3>{profile.name}</h3>{#if profile.isSample}<span class="sample-label">演示数据</span>{/if}</div>
@@ -568,9 +626,11 @@
                 <div class="favorite-actions">
                   <button class="icon-button" type="button" title="编辑配置" aria-label="编辑配置" onclick={() => selectProfile(profile)}><Icon name="edit" size={16} /></button>
                   <button class="icon-button icon-button--danger" type="button" title="删除收藏" aria-label="删除收藏" onclick={() => requestDeleteProfile(profile)}><Icon name="trash" size={16} /></button>
-                  <button class="button button--primary button--small" type="button" onclick={() => startTunnel(profile)}><Icon name="play" size={14} /> 启动</button>
+                  <button class="button button--primary button--small" type="button" disabled={!backendReady || pendingStarts.includes(profile.id)} onclick={() => startTunnel(profile)}><Icon name="play" size={14} /> 启动</button>
                 </div>
               </article>
+            {:else}
+              <div class="empty-state"><span class="empty-state__icon"><Icon name="book" size={22} /></span><h3>暂无收藏配置</h3><p>在左侧填写配置并保存收藏，下次即可一键启动。</p></div>
             {/each}
           </div>
         {:else}

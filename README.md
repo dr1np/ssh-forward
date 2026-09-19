@@ -1,6 +1,6 @@
 # SSH 端口转发助手
 
-一个面向 Windows 的轻量桌面工具，用来集中管理 SSH 本地端口转发。它直接调用 Windows OpenSSH，不保存账号密码，不需要安装任何 Python 第三方依赖。
+一个跨平台桌面工具，用来集中管理 SSH 本地端口转发。它直接调用系统 OpenSSH，不保存账号密码。
 
 ## 能做什么
 
@@ -14,9 +14,9 @@
 
 ## 运行环境
 
-1. Windows 10/11。
-2. Python 3.10 或更高版本，安装时建议勾选 `Add Python to PATH`。
-3. Windows OpenSSH 客户端。Windows 11 通常已自带；如果界面提示未找到，请前往“设置 → 系统 → 可选功能”安装 **OpenSSH 客户端**。
+Windows 发行包自带 Python sidecar，因此用户只需要 Windows 10/11、WebView2 和 Windows OpenSSH 客户端。Windows 11 通常已自带 OpenSSH；如果界面提示未找到，请前往“设置 → 系统 → 可选功能”安装 **OpenSSH 客户端**。
+
+从源码运行 Python service 或旧版 Tk 界面时，需要 Python 3.10 或更高版本。
 
 ## 启动
 
@@ -28,9 +28,11 @@
 python main.py
 ```
 
-## 前端重构预览
+## Tauri 桌面版与系统托盘
 
-当前仓库同时包含 Svelte/Vite + Tauri 前端，位于 [`frontend/`](./frontend/)。浏览器预览使用显式标记的演示数据；Tauri debug 运行时会通过 Rust bridge 启动仓库内 Python service 并连接现有 SSH 核心。
+正式桌面版位于 [`frontend/`](./frontend/)，使用 Svelte/Vite + Tauri。关闭窗口会收纳到系统托盘并保持转发，右键托盘图标可以显示主窗口，或退出并停止所有转发。偏好设置可以关闭这一行为，改为直接退出确认。
+
+浏览器预览使用显式标记的演示数据；Tauri 开发运行时通过 Rust bridge 启动仓库内 Python service。旧版 Tk 界面和源码 service 仍保留用于兼容与测试。
 
 ```powershell
 cd frontend
@@ -50,6 +52,21 @@ npm run tauri dev
 npm run check
 npm run build
 ```
+
+从仓库根目录准备 Windows V0.1 portable 包：
+
+```powershell
+cd C:\Project\SSHforward
+uv venv .venv --python 3.13
+uv pip install --python .venv/Scripts/python.exe -r requirements-build.txt
+$env:PATH = "C:\Project\SSHforward\.venv\Scripts;C:\Users\tanzi\.cargo\bin;" + $env:PATH
+cd frontend
+npm run desktop:build -- --no-bundle
+cd ..
+.venv/Scripts/python.exe scripts/package_release.py --version 0.1.0
+```
+
+构建记录和平台限制见 [`docs/release-v0.1.md`](docs/release-v0.1.md)。Linux 需要 WebKitGTK 和系统 OpenSSH；macOS 需要 WebKit、系统 OpenSSH，当前本地包未签名。
 
 ## 使用方法
 

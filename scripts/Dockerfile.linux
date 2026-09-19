@@ -1,0 +1,21 @@
+FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV RUSTUP_HOME=/opt/rustup
+ENV CARGO_HOME=/opt/cargo
+ENV PATH=/opt/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       build-essential ca-certificates curl file git pkg-config wget \
+       libayatana-appindicator3-dev libgtk-3-dev libssl-dev libwebkit2gtk-4.1-dev \
+       librsvg2-dev libxdo-dev libpython3.10-dev python3 python3-venv python3-pip \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path \
+    && rustup target add x86_64-unknown-linux-gnu \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+CMD ["bash"]

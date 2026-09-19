@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
+  import { dialogFocus } from "../dialog";
   import Icon from "./Icon.svelte";
   import type { AppPreferences, DefaultLocalBind } from "../preferences";
 
@@ -11,14 +12,15 @@
 
   let { initial, onCancel, onSave }: Props = $props();
   let confirmOnExit = $state(untrack(() => initial.confirmOnExit));
+  let closeToTray = $state(untrack(() => initial.closeToTray));
   let defaultLocalBind = $state<DefaultLocalBind>(untrack(() => initial.defaultLocalBind));
   let autoSelectPort = $state(untrack(() => initial.autoSelectPort));
 
-  const save = () => onSave({ confirmOnExit, defaultLocalBind, autoSelectPort });
+  const save = () => onSave({ confirmOnExit, closeToTray, defaultLocalBind, autoSelectPort });
 </script>
 
 <div class="modal-backdrop" role="presentation" onclick={(event) => event.target === event.currentTarget && onCancel()}>
-  <div class="dialog-card preferences-dialog" role="dialog" aria-modal="true" aria-labelledby="preferences-title" tabindex="-1">
+  <div class="dialog-card preferences-dialog" use:dialogFocus={onCancel} role="dialog" aria-modal="true" aria-labelledby="preferences-title" tabindex="-1">
     <div class="dialog-heading dialog-heading--with-icon">
       <div class="dialog-icon"><Icon name="sliders" size={19} /></div>
       <div>
@@ -30,7 +32,11 @@
 
     <div class="preference-list">
       <label class="preference-row">
-        <span><strong>退出前确认</strong><small>有转发运行时，关闭窗口前先询问。</small></span>
+        <span><strong>关闭时收纳到托盘</strong><small>关闭窗口后继续保持转发，右键托盘图标可退出。</small></span>
+        <input class="toggle-input" type="checkbox" bind:checked={closeToTray} />
+      </label>
+      <label class="preference-row">
+        <span><strong>直接退出前确认</strong><small>关闭托盘后台模式后，有转发运行时先询问。</small></span>
         <input class="toggle-input" type="checkbox" bind:checked={confirmOnExit} />
       </label>
       <label class="preference-row preference-row--field" for="default-bind">

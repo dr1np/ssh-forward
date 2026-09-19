@@ -2,12 +2,14 @@ export type DefaultLocalBind = "127.0.0.1" | "0.0.0.0" | "::1";
 
 export interface AppPreferences {
   confirmOnExit: boolean;
+  closeToTray: boolean;
   defaultLocalBind: DefaultLocalBind;
   autoSelectPort: boolean;
 }
 
 export const DEFAULT_PREFERENCES: AppPreferences = {
   confirmOnExit: true,
+  closeToTray: true,
   defaultLocalBind: "127.0.0.1",
   autoSelectPort: false,
 };
@@ -22,6 +24,7 @@ export function readPreferences(): AppPreferences {
     const defaultLocalBind = parsed.defaultLocalBind;
     return {
       confirmOnExit: parsed.confirmOnExit !== false,
+      closeToTray: parsed.closeToTray !== false,
       defaultLocalBind: defaultLocalBind === "0.0.0.0" || defaultLocalBind === "::1" ? defaultLocalBind : "127.0.0.1",
       autoSelectPort: parsed.autoSelectPort === true,
     };

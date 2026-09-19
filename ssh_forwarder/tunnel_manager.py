@@ -6,6 +6,7 @@ import shutil
 import socket
 import subprocess
 import threading
+import time
 from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
@@ -53,6 +54,9 @@ def build_ssh_command(ssh_executable: str, profile: ForwardProfile) -> list[str]
         "-L",
         forward_spec,
     ]
+    config = os.environ.get("SSH_FORWARDER_SSH_CONFIG")
+    if config:
+        command.extend(["-F", config])
     if profile.connection_type == "custom":
         command.extend(["-p", str(profile.ssh_port)])
         if profile.identity_file.strip():
@@ -92,7 +96,7 @@ class TunnelManager:
     def start(self, profile: ForwardProfile) -> ActiveTunnel:
         if not self.ssh_executable:
             raise RuntimeError(
-                "未找到 Windows OpenSSH 客户端。请在“可选功能”中安装 OpenSSH 客户端。"
+                "未找到 OpenSSH 客户端。请安装 OpenSSH 并确保 ssh 位于 PATH 中。"
             )
         with self._lock:
             if not self._accepting_starts:
@@ -126,6 +130,33 @@ class TunnelManager:
             ).start()
             return active
 
+    def change_port(self, tunnel_id: str, port: int) -> ActiveTunnel:
+        current = self.get(tunnel_id)
+        if not current or current.process.poll() is not None:
+            raise ValueError("找不到运行中的转发。")
+        replacement = current.profile.clone(keep_id=False)
+        replacement.local_port = port
+        replacement.validate()
+        if port == current.profile.local_port:
+            return current
+        # Keep the old tunnel until the replacement has actually bound its port.
+        active = self.start(replacement)
+        try:
+            deadline = time.monotonic() + 15
+            while not self.mark_connected_if_running(active.id):
+                if active.process.poll() is not None:
+                    raise RuntimeError(active.last_error or "新连接建立失败，原转发保持运行。")
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("新连接建立超时，原转发保持运行。")
+                time.sleep(0.1)
+            self.stop(tunnel_id)
+        except Exception:
+            self.stop(active.id)
+            self.remove_finished(active.id)
+            raise
+        self.remove_finished(tunnel_id)
+        return active
+
     def _watch_process(self, tunnel: ActiveTunnel) -> None:
         messages: list[str] = []
         stderr = tunnel.process.stderr
@@ -156,7 +187,7 @@ class TunnelManager:
                 return
             if current.ended_at is None:
                 current.ended_at = ended_at
-            if current.status == "正在停止":
+            if current.status in {"正在停止", "已停止"}:
                 current.status = "已停止"
                 self.events.put(("stopped", tunnel.id, "转发已停止"))
             else:
@@ -177,9 +208,28 @@ class TunnelManager:
     def mark_connected_if_running(self, tunnel_id: str) -> bool:
         with self._lock:
             tunnel = self.tunnels.get(tunnel_id)
-            if tunnel and tunnel.process.poll() is None:
-                tunnel.status = "运行中"
-                return True
+            if not tunnel:
+                return False
+            return_code = tunnel.process.poll()
+            if return_code is not None:
+                if tunnel.status == "正在连接":
+                    tunnel.status = "连接失败" if return_code else "已结束"
+                    if not tunnel.last_error:
+                        tunnel.last_error = f"SSH 已退出（代码 {return_code}）"
+                return False
+            if tunnel.status in {"正在连接", "运行中"}:
+                if tunnel.status == "运行中":
+                    return True
+                host = "127.0.0.1" if tunnel.profile.local_bind == "0.0.0.0" else tunnel.profile.local_bind
+                try:
+                    with socket.create_connection((host, tunnel.profile.local_port), timeout=0.1):
+                        pass
+                except OSError:
+                    return False
+                if tunnel.process.poll() is None:
+                    tunnel.status = "运行中"
+                    self.events.put(("connected", tunnel.id, "SSH 本地监听已就绪"))
+                    return True
             return False
 
     def stop(self, tunnel_id: str) -> None:

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 import queue
 import sys
 import threading
 from datetime import datetime
 from typing import Any
+from pathlib import Path
 
 from .models import ActiveTunnel, ForwardProfile
 from .ssh_config import discover_ssh_hosts
@@ -105,8 +107,11 @@ class BackendService:
             self.respond(request_id, error=f"服务内部错误：{exc}")
 
     def dispatch(self, method: str, params: dict[str, Any]) -> Any:
+        if method == "get_status":
+            return {"ssh_available": bool(self.manager.ssh_executable)}
         if method == "list_ssh_hosts":
-            return {"hosts": discover_ssh_hosts()}
+            config = os.environ.get("SSH_FORWARDER_SSH_CONFIG")
+            return {"hosts": discover_ssh_hosts(Path(config) if config else None)}
         if method == "load_profiles":
             if self.load_error:
                 return {"profiles": [], "warning": self.load_error}
@@ -114,6 +119,8 @@ class BackendService:
                 "profiles": [_serialize_profile(item) for item in self.store.favorites]
             }
         if method == "get_tunnels":
+            for tunnel in self.manager.snapshot():
+                self.manager.mark_connected_if_running(tunnel.id)
             return {"tunnels": [_serialize_tunnel(item) for item in self.manager.snapshot()]}
         if method == "clear_finished":
             removed = 0
@@ -148,16 +155,7 @@ class BackendService:
             self.manager.stop(str(params["tunnel_id"]))
             return {"stopped": True}
         if method == "change_tunnel_port":
-            old_id = str(params["tunnel_id"])
-            current = self.manager.get(old_id)
-            if not current:
-                raise ValueError("找不到要更改端口的转发。")
-            replacement = current.profile.clone(keep_id=False)
-            replacement.local_port = int(params["local_port"])
-            self.manager.stop(old_id)
-            self.manager.remove_finished(old_id)
-            active = self.manager.start(replacement)
-            self.manager.mark_connected_if_running(active.id)
+            active = self.manager.change_port(str(params["tunnel_id"]), params["local_port"])
             return {"tunnel": _serialize_tunnel(active)}
         if method == "shutdown":
             errors = self.manager.shutdown()
@@ -186,6 +184,7 @@ class BackendService:
                 self.emit_manager_events()
                 continue
             if request.get("_eof"):
+                self.manager.shutdown()
                 break
             self.handle(request)
             self.emit_manager_events()

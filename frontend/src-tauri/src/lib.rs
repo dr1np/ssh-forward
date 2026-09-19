@@ -9,7 +9,13 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
+use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+use std::sync::atomic::AtomicBool;
 
 type PendingMap = Arc<Mutex<HashMap<String, Sender<Result<Value, String>>>>>;
 
@@ -23,6 +29,11 @@ struct BackendConnection {
 struct BackendState {
     connection: Mutex<Option<Arc<BackendConnection>>>,
     next_request_id: AtomicU64,
+}
+
+#[derive(Default)]
+struct TrayState {
+    available: AtomicBool,
 }
 
 impl BackendState {
@@ -77,34 +88,38 @@ fn repository_root() -> PathBuf {
 }
 
 fn spawn_backend(app: &AppHandle) -> Result<Arc<BackendConnection>, String> {
-    let root = repository_root();
-    let candidates = [
-        ("python", vec!["-u", "-m", "ssh_forwarder.service"]),
-        ("python3", vec!["-u", "-m", "ssh_forwarder.service"]),
-        ("py", vec!["-3", "-u", "-m", "ssh_forwarder.service"]),
-    ];
-    let mut last_error = String::from("未找到 Python 解释器");
+    let mut commands = Vec::new();
+    if cfg!(debug_assertions) {
+        for (exe, args) in [
+            ("python", vec!["-u", "-m", "ssh_forwarder.service"]),
+            ("python3", vec!["-u", "-m", "ssh_forwarder.service"]),
+            ("py", vec!["-3", "-u", "-m", "ssh_forwarder.service"]),
+        ] {
+            let mut command = Command::new(exe);
+            command.args(args).current_dir(repository_root());
+            commands.push(command);
+        }
+    } else {
+        let executable = std::env::current_exe().map_err(|error| error.to_string())?;
+        let directory = executable.parent().ok_or("无法定位应用目录")?;
+        let sidecar = directory.join(if cfg!(windows) {
+            "ssh-forwarder-service.exe"
+        } else {
+            "ssh-forwarder-service"
+        });
+        commands.push(Command::new(sidecar));
+    }
+    let mut last_error = String::from("无法启动后端服务");
     let mut child = None;
-
-    for (executable, args) in candidates {
-        match Command::new(executable)
-            .args(args)
-            .current_dir(&root)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-        {
-            Ok(process) => {
-                child = Some(process);
-                break;
-            }
-            Err(error) => {
-                last_error = format!("无法启动 {executable}：{error}");
-            }
+    for mut command in commands {
+        command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        #[cfg(windows)]
+        command.creation_flags(0x08000000); // CREATE_NO_WINDOW, retain JSONL pipes.
+        match command.spawn() {
+            Ok(process) => { child = Some(process); break; }
+            Err(error) => last_error = format!("无法启动后端服务：{error}"),
         }
     }
-
     let mut child = child.ok_or(last_error)?;
     let stdin = child
         .stdin
@@ -187,7 +202,10 @@ fn connection_for(app: &AppHandle, state: &BackendState) -> Result<Arc<BackendCo
         .lock()
         .map_err(|_| "Python 服务状态锁已损坏。".to_string())?;
     if let Some(connection) = guard.as_ref() {
-        return Ok(Arc::clone(connection));
+        let running = connection.child.lock()
+            .map_err(|_| "后端进程锁已损坏")?
+            .try_wait().map_err(|error| error.to_string())?.is_none();
+        if running { return Ok(Arc::clone(connection)); }
     }
     let connection = spawn_backend(app)?;
     *guard = Some(Arc::clone(&connection));
@@ -195,13 +213,20 @@ fn connection_for(app: &AppHandle, state: &BackendState) -> Result<Arc<BackendCo
 }
 
 #[tauri::command]
-fn backend_request(
-    app: AppHandle,
-    state: State<'_, BackendState>,
-    method: String,
-    params: Value,
-) -> Result<Value, String> {
-    let connection = connection_for(&app, &state)?;
+async fn backend_request(app: AppHandle, method: String, params: Value) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<BackendState>();
+        request_blocking(&app, &state, method, params)
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+fn tray_status(state: State<'_, TrayState>) -> bool {
+    state.available.load(Ordering::Relaxed)
+}
+
+fn request_blocking(app: &AppHandle, state: &BackendState, method: String, params: Value) -> Result<Value, String> {
+    let connection = connection_for(app, state)?;
     let request_id = state
         .next_request_id
         .fetch_add(1, Ordering::Relaxed)
@@ -238,19 +263,79 @@ fn backend_request(
         return Err(format!("无法写入 Python 服务：{error}"));
     }
 
-    match receiver.recv_timeout(Duration::from_secs(30)) {
+    let result = match receiver.recv_timeout(Duration::from_secs(30)) {
         Ok(response) => response,
         Err(RecvTimeoutError::Timeout) => Err("等待 Python 服务响应超时。".to_string()),
         Err(RecvTimeoutError::Disconnected) => Err("Python 服务已断开。".to_string()),
-    }
+    };
+    if let Ok(mut waiting) = connection.pending.lock() { waiting.remove(&request_id); }
+    result
 }
 
 pub fn run() {
     let app = tauri::Builder::default()
         .manage(BackendState::default())
-        .invoke_handler(tauri::generate_handler![backend_request])
+        .manage(TrayState::default())
+        .invoke_handler(tauri::generate_handler![backend_request, tray_status])
         .setup(|app| {
             app.handle().plugin(tauri_plugin_dialog::init())?;
+
+            let show_window = MenuItemBuilder::with_id("show-window", "显示窗口").build(app)?;
+            let separator = PredefinedMenuItem::separator(app)?;
+            let quit = MenuItemBuilder::with_id("quit-app", "退出并停止转发").build(app)?;
+            let menu = MenuBuilder::new(app)
+                .items(&[&show_window, &separator, &quit])
+                .build()?;
+
+            // TrayIconBuilder waits for the main-thread task it posts. Starting it
+            // from the Ready callback would block that same event loop, so defer the
+            // builder to a worker thread and let the event loop service the request.
+            let app_handle = app.handle().clone();
+            let main_window = app.get_webview_window("main");
+            thread::spawn(move || {
+                thread::sleep(Duration::from_millis(100));
+                if let Some(window) = main_window {
+                    let _ = window.show();
+                    let _ = window.unminimize();
+                    let _ = window.set_focus();
+                }
+            });
+            thread::spawn(move || {
+                let result = app_handle
+                    .default_window_icon()
+                    .cloned()
+                    .ok_or_else(|| "应用缺少托盘图标".to_string())
+                    .and_then(|icon| {
+                        TrayIconBuilder::with_id("main")
+                            .icon(icon)
+                            .menu(&menu)
+                            .show_menu_on_left_click(false)
+                            .tooltip("SSH 端口转发助手")
+                            .on_menu_event(|app, event| match event.id().as_ref() {
+                                "show-window" => show_main_window(app),
+                                "quit-app" => app.exit(0),
+                                _ => {}
+                            })
+                            .on_tray_icon_event(|tray, event| {
+                                if let TrayIconEvent::Click {
+                                    button: MouseButton::Left,
+                                    button_state: MouseButtonState::Up,
+                                    ..
+                                } = event
+                                {
+                                    show_main_window(tray.app_handle());
+                                }
+                            })
+                            .build(&app_handle)
+                            .map(|_| ())
+                            .map_err(|error| error.to_string())
+                    });
+                if result.is_ok() {
+                    app_handle.state::<TrayState>().available.store(true, Ordering::Relaxed);
+                } else if let Err(error) = result {
+                    eprintln!("无法创建系统托盘，关闭窗口将直接退出：{error}");
+                }
+            });
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -263,4 +348,12 @@ pub fn run() {
             }
         }
     });
+}
+
+fn show_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
 }

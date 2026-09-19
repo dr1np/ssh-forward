@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,15 @@ APP_NAME = "SSHForwarder"
 
 
 def default_data_file() -> Path:
-    base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+    override = os.environ.get("SSH_FORWARDER_DATA_DIR")
+    if override:
+        return Path(override) / "settings.json"
+    if sys.platform == "win32":
+        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    else:
+        base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
     return base / APP_NAME / "settings.json"
 
 
@@ -59,6 +68,8 @@ class ProfileStore:
             raise ValueError(f"无法读取配置文件：{exc}") from exc
 
     def save(self) -> None:
+        if self.load_failed:
+            raise ValueError("配置文件读取失败，已阻止覆盖。请先备份并修复配置文件。")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "version": 1,
@@ -74,18 +85,36 @@ class ProfileStore:
 
     def upsert(self, profile: ForwardProfile) -> None:
         profile.validate()
+        if self.load_failed:
+            raise ValueError("配置文件读取失败，已阻止覆盖。请先备份并修复配置文件。")
         saved = profile.clone(keep_id=True)
+        previous = list(self.favorites)
         for index, item in enumerate(self.favorites):
             if item.id == saved.id:
                 self.favorites[index] = saved
-                self.save()
+                try:
+                    self.save()
+                except OSError:
+                    self.favorites = previous
+                    raise
                 return
         self.favorites.append(saved)
-        self.save()
+        try:
+            self.save()
+        except OSError:
+            self.favorites = previous
+            raise
 
     def delete(self, profile_id: str) -> None:
+        if self.load_failed:
+            raise ValueError("配置文件读取失败，已阻止覆盖。请先备份并修复配置文件。")
+        previous = self.favorites
         self.favorites = [item for item in self.favorites if item.id != profile_id]
-        self.save()
+        try:
+            self.save()
+        except OSError:
+            self.favorites = previous
+            raise
 
     def get(self, profile_id: str) -> ForwardProfile | None:
         return next((item for item in self.favorites if item.id == profile_id), None)

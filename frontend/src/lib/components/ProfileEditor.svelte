@@ -5,6 +5,7 @@
 
   interface Props {
     initialProfile: ForwardProfile;
+    disabled?: boolean;
     hostAliases: string[];
     autoSelectPort: boolean;
     onSave: (profile: ForwardProfile) => void | Promise<void | boolean>;
@@ -16,7 +17,7 @@
     onStartAndSave: (profile: ForwardProfile) => void | Promise<void>;
   }
 
-  let { initialProfile, hostAliases, autoSelectPort, onSave, onStart, onRefreshHosts, onFindPort, onChooseIdentityFile, onReset, onStartAndSave }: Props = $props();
+  let { disabled = false, initialProfile, hostAliases, autoSelectPort, onSave, onStart, onRefreshHosts, onFindPort, onChooseIdentityFile, onReset, onStartAndSave }: Props = $props();
   const initial: ForwardProfile = { ...untrack(() => initialProfile) };
   let connectionType = $state<ConnectionType>(initial.connectionType);
   let name = $state(initial.name);
@@ -29,18 +30,52 @@
   let remoteHost = $state(initial.remoteHost);
   let remotePort = $state(String(initial.remotePort));
 
+  let error = $state("");
+  let busy = $state(false);
+  let findingPort = $state(false);
+  let fieldErrors = $state<Record<string, string>>({});
+
+  const findPort = async () => {
+    if (findingPort || disabled) return;
+    findingPort = true;
+    error = "";
+    const bind = localBind;
+    const previous = localPort;
+    try {
+      const port = await onFindPort(bind);
+      if (localBind === bind && localPort === previous) localPort = String(port);
+    } catch (cause) { error = `无法选择空闲端口：${String(cause)}`; }
+    finally { findingPort = false; }
+  };
   onMount(() => {
-    if (autoSelectPort && !initial.name) {
-      void Promise.resolve(onFindPort(localBind)).then((port: number) => (localPort = String(port)));
-    }
+    if (autoSelectPort && !initial.name) void findPort();
   });
+
+  const submit = async (action: Props["onSave"] | Props["onStart"]) => {
+    if (busy || disabled || findingPort) return;
+    const errors: Record<string, string> = {};
+    const hostId = connectionType === "config" ? "config-host" : "custom-host";
+    if (!sshHost.trim() || /^-/.test(sshHost.trim()) || /\s/.test(sshHost.trim())) errors[hostId] = "请填写有效的 SSH 主机或别名。";
+    if (!remoteHost.trim() || /^-/.test(remoteHost.trim()) || /\s/.test(remoteHost.trim())) errors["remote-host"] = "请填写有效的目标主机。";
+    const ports = [["local-port", localPort, "本地端口"], ["remote-port", remotePort, "目标端口"]];
+    if (connectionType === "custom") ports.push(["ssh-port", sshPort, "SSH 端口"]);
+    for (const [id, value, label] of ports) {
+      if (!/^\d+$/.test(value.trim()) || Number(value) < 1 || Number(value) > 65535) errors[id] = `${label}必须是 1 到 65535 之间的整数。`;
+    }
+    fieldErrors = errors;
+    error = Object.values(errors)[0] ?? "";
+    if (error) { document.getElementById(Object.keys(errors)[0])?.focus(); return; }
+    busy = true;
+    try { await action(buildProfile()); } catch (cause) { error = String(cause); }
+    finally { busy = false; }
+  };
 
   const buildProfile = (): ForwardProfile => ({
     ...initial,
     name: name.trim() || `${remoteHost.trim() || "目标服务"}:${Number.isFinite(Number(remotePort)) ? Number(remotePort) : remotePort.trim()}`,
     connectionType,
     sshHost: sshHost.trim(),
-    sshPort: Number(sshPort),
+    sshPort: connectionType === "config" ? 22 : Number(sshPort),
     sshUser: sshUser.trim(),
     identityFile: identityFile.trim(),
     localBind,
@@ -54,10 +89,10 @@
   <div class="section-heading">
     <div>
       <span class="section-kicker">连接配置</span>
-      <h2>新建转发</h2>
+      <h2>{initial.name ? "编辑配置" : "新建转发"}</h2>
     </div>
       <span class="section-index">01</span>
-      <button class="button button--quiet editor-reset" type="button" onclick={onReset}>清空</button>
+      <button class="button button--quiet editor-reset" type="button" disabled={busy} onclick={onReset}>新建</button>
   </div>
 
   <div class="connection-tabs" role="tablist" aria-label="连接类型">
@@ -73,25 +108,25 @@
     <div class="field-block">
       <label for="config-host">SSH Config 主机</label>
       <div class="field-with-action">
-        <input id="config-host" list="ssh-host-aliases" bind:value={sshHost} placeholder="例如 production" />
+        <input aria-invalid={Boolean(fieldErrors["config-host"])} aria-describedby={fieldErrors["config-host"] ? "editor-error" : undefined} id="config-host" list="ssh-host-aliases" bind:value={sshHost} placeholder="例如 production" />
         <datalist id="ssh-host-aliases">
           {#each hostAliases as alias}
-            <option value={alias}>{alias}{alias === "production" ? " · 示例" : ""}</option>
+            <option value={alias}>{alias}</option>
           {/each}
         </datalist>
         <button class="small-button" type="button" title="刷新 SSH Config" aria-label="刷新 SSH Config" onclick={onRefreshHosts}><Icon name="refresh" size={16} /></button>
       </div>
-      <p class="field-help">列表来自用户 SSH 配置文件，可直接选择别名。</p>
+      <p class="field-help">{hostAliases.length ? "列表来自用户 SSH 配置文件，可直接选择别名。" : "未发现 SSH 别名；可输入别名或切换自定义主机。"}</p>
     </div>
   {:else}
     <div class="field-grid field-grid--host">
       <div class="field-block">
         <label for="custom-host">主机 / IP</label>
-        <input id="custom-host" bind:value={sshHost} placeholder="例如 192.0.2.10" />
+        <input aria-invalid={Boolean(fieldErrors["custom-host"])} aria-describedby={fieldErrors["custom-host"] ? "editor-error" : undefined} id="custom-host" bind:value={sshHost} placeholder="例如 192.0.2.10" />
       </div>
       <div class="field-block">
         <label for="ssh-port">SSH 端口</label>
-        <input id="ssh-port" bind:value={sshPort} inputmode="numeric" />
+        <input aria-invalid={Boolean(fieldErrors["ssh-port"])} aria-describedby={fieldErrors["ssh-port"] ? "editor-error" : undefined} id="ssh-port" bind:value={sshPort} inputmode="numeric" />
       </div>
     </div>
     <div class="field-grid field-grid--host">
@@ -103,7 +138,7 @@
         <label for="identity-file">私钥路径</label>
         <div class="field-with-action">
           <input id="identity-file" bind:value={identityFile} placeholder="可选" />
-          <button class="small-button" type="button" title="选择 SSH 私钥" aria-label="选择 SSH 私钥" onclick={async () => { const selected = await onChooseIdentityFile(); if (selected) identityFile = selected; }}><Icon name="file" size={16} /></button>
+          <button class="small-button" type="button" title="选择 SSH 私钥" aria-label="选择 SSH 私钥" onclick={async () => { try { const selected = await onChooseIdentityFile(); if (selected) identityFile = selected; } catch (cause) { error = String(cause); } }}><Icon name="file" size={16} /></button>
         </div>
       </div>
     </div>
@@ -136,8 +171,8 @@
     <div class="field-block">
       <label for="local-port">本地端口</label>
       <div class="field-with-action">
-        <input id="local-port" bind:value={localPort} inputmode="numeric" />
-        <button class="small-button small-button--text" type="button" onclick={async () => (localPort = String(await onFindPort(localBind)))}>自动</button>
+        <input aria-invalid={Boolean(fieldErrors["local-port"])} aria-describedby={fieldErrors["local-port"] ? "editor-error" : undefined} id="local-port" bind:value={localPort} inputmode="numeric" />
+        <button class="small-button small-button--text" type="button" disabled={disabled || findingPort || busy} onclick={findPort}>{findingPort ? "查找中" : "自动"}</button>
       </div>
     </div>
   </div>
@@ -145,19 +180,21 @@
   <div class="field-grid">
     <div class="field-block">
       <label for="remote-host">目标主机</label>
-      <input id="remote-host" bind:value={remoteHost} placeholder="127.0.0.1" />
+      <input aria-invalid={Boolean(fieldErrors["remote-host"])} aria-describedby={fieldErrors["remote-host"] ? "editor-error" : undefined} id="remote-host" bind:value={remoteHost} placeholder="127.0.0.1" />
     </div>
     <div class="field-block">
       <label for="remote-port">目标端口</label>
-      <input id="remote-port" bind:value={remotePort} inputmode="numeric" />
+      <input aria-invalid={Boolean(fieldErrors["remote-port"])} aria-describedby={fieldErrors["remote-port"] ? "editor-error" : undefined} id="remote-port" bind:value={remotePort} inputmode="numeric" />
     </div>
   </div>
 
   <p class="form-note"><Icon name="link" size={15} /> 目标地址由 SSH 服务器解析，适合访问服务器内网服务。</p>
 
+  {#if error}<p id="editor-error" class="dialog-error editor-error" role="alert">{error}</p>{/if}
+  {#if busy}<p class="field-help" role="status">正在处理，请稍候…</p>{/if}
   <div class="editor-actions">
-    <button class="button button--primary" type="button" onclick={() => onStart(buildProfile())}><Icon name="play" size={16} /> 启动转发</button>
-    <button class="button button--secondary" type="button" onclick={() => onSave(buildProfile())}><Icon name="book" size={16} /> 保存收藏</button>
-    <button class="button button--secondary editor-actions__wide" type="button" onclick={() => onStartAndSave(buildProfile())}><Icon name="play" size={16} /> 启动并收藏</button>
+    <button class="button button--primary" type="button" disabled={disabled || busy || findingPort} onclick={() => submit(onStart)}><Icon name="play" size={16} /> 启动转发</button>
+    <button class="button button--secondary" type="button" disabled={disabled || busy || findingPort} onclick={() => submit(onSave)}><Icon name="book" size={16} /> 保存收藏</button>
+    <button class="button button--secondary editor-actions__wide" type="button" disabled={disabled || busy || findingPort} onclick={() => submit(onStartAndSave)}><Icon name="play" size={16} /> 启动并收藏</button>
   </div>
 </section>

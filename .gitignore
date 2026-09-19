@@ -3,8 +3,11 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .venv/
+.venv-linux/
 node_modules/
 .svelte-kit/
 dist/
 build/
 *.spec
+frontend/src-tauri/binaries/
+artifacts/

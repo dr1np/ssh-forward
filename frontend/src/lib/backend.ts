@@ -27,7 +27,7 @@ interface BackendTunnel {
 
 export interface BackendEvent {
   event?: string;
-  type?: "log" | "exited" | "stopped" | "backend_exited" | "protocol_error";
+  type?: "log" | "connected" | "exited" | "stopped" | "backend_exited" | "protocol_error";
   tunnel_id?: string;
   message?: string;
   tunnel?: BackendTunnel | null;
@@ -35,6 +35,7 @@ export interface BackendEvent {
 
 export interface BackendSnapshot {
   hosts: string[];
+  sshAvailable: boolean;
   profiles: ForwardProfile[];
   tunnels: ActiveTunnel[];
   warning?: string;
@@ -90,17 +91,22 @@ async function request<T>(method: string, params: Record<string, unknown> = {}):
 }
 
 export async function loadSnapshot(): Promise<BackendSnapshot> {
-  const [hosts, profilesResult, tunnels] = await Promise.all([
+  const [hosts, profilesResult, tunnels, status] = await Promise.all([
     loadHosts(),
     loadProfiles(),
     loadTunnels(),
+    request<{ ssh_available: boolean }>("get_status"),
   ]);
   return {
     hosts,
-    profiles: profilesResult.profiles,
+    sshAvailable: status.ssh_available,    profiles: profilesResult.profiles,
     tunnels,
     warning: profilesResult.warning,
   };
+}
+
+export async function loadTrayStatus(): Promise<boolean> {
+  return invoke<boolean>("tray_status");
 }
 
 export async function loadHosts(): Promise<string[]> {
@@ -189,7 +195,7 @@ export async function subscribeBackendEvents(onEvent: (event: BackendEvent) => v
 
 export function backendLogToEntry(event: BackendEvent): LogEntry | null {
   if (!event.message) return null;
-  const level: LogEntry["level"] = event.type === "stopped" ? "info" : event.type === "log" ? "error" : "info";
+  const level: LogEntry["level"] = event.type === "connected" ? "success" : event.type === "log" || event.type === "exited" ? "error" : "info";
   return {
     id: `${Date.now()}-${Math.random()}`,
     time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),

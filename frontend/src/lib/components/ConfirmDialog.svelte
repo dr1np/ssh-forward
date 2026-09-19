@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dialogFocus } from "../dialog";
   import Icon from "./Icon.svelte";
 
   interface Props {
@@ -14,7 +15,7 @@
 </script>
 
 <div class="modal-backdrop" role="presentation" onclick={(event) => event.target === event.currentTarget && onCancel()}>
-  <div class="dialog-card dialog-card--compact" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title" tabindex="-1">
+  <div class="dialog-card dialog-card--compact" use:dialogFocus={onCancel} role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title" tabindex="-1">
     <div class="dialog-icon" class:dialog-icon--danger={danger}><Icon name={danger ? "trash" : "sliders"} size={19} /></div>
     <div class="dialog-heading">
       <span class="section-kicker">请确认</span>

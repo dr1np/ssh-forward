@@ -29,6 +29,9 @@ class ForwardProfile:
             raise ValueError("请填写 SSH 主机。")
         if not isinstance(self.remote_host, str) or not self.remote_host.strip():
             raise ValueError("请填写目标主机。")
+        for host, label in ((self.ssh_host, "SSH 主机"), (self.remote_host, "目标主机")):
+            if host.strip().startswith("-") or any(char.isspace() for char in host.strip()) or "\x00" in host:
+                raise ValueError(f"{label}不能包含空白字符或以 - 开头。")
         if not isinstance(self.connection_type, str) or self.connection_type not in {"config", "custom"}:
             raise ValueError("连接类型无效。")
         for value, label in (
