@@ -27,10 +27,15 @@ impl LocalBind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum TunnelStatus { Connecting, Running, Stopping, Stopped, Failed }
+pub enum TunnelStatus {
+    Connecting,
+    Running,
+    Stopping,
+    Stopped,
+    Failed,
+}
 
 impl TunnelStatus {
     pub fn as_str(self) -> &'static str {
@@ -60,25 +65,85 @@ pub struct ForwardProfile {
 }
 
 impl ForwardProfile {
-    pub fn new(name: &str, ssh_host: &str, local_port: u32, remote_host: &str, remote_port: u32) -> Self {
-        Self { id: uuid::Uuid::new_v4().simple().to_string(), name: name.into(), connection_type: ConnectionType::Config, ssh_host: ssh_host.into(), ssh_port: 22, ssh_user: String::new(), identity_file: String::new(), local_bind: LocalBind::LoopbackV4, local_port, remote_host: remote_host.into(), remote_port }
+    pub fn new(
+        name: &str,
+        ssh_host: &str,
+        local_port: u32,
+        remote_host: &str,
+        remote_port: u32,
+    ) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().simple().to_string(),
+            name: name.into(),
+            connection_type: ConnectionType::Config,
+            ssh_host: ssh_host.into(),
+            ssh_port: 22,
+            ssh_user: String::new(),
+            identity_file: String::new(),
+            local_bind: LocalBind::LoopbackV4,
+            local_port,
+            remote_host: remote_host.into(),
+            remote_port,
+        }
     }
 
-    pub fn new_custom(name: &str, ssh_host: &str, ssh_port: u32, ssh_user: &str, identity_file: &str, local_port: u32, remote_host: &str, remote_port: u32) -> Self {
-        Self { id: uuid::Uuid::new_v4().simple().to_string(), name: name.into(), connection_type: ConnectionType::Custom, ssh_host: ssh_host.into(), ssh_port, ssh_user: ssh_user.into(), identity_file: identity_file.into(), local_bind: LocalBind::LoopbackV4, local_port, remote_host: remote_host.into(), remote_port }
+    pub fn new_custom(
+        name: &str,
+        ssh_host: &str,
+        ssh_port: u32,
+        ssh_user: &str,
+        identity_file: &str,
+        local_port: u32,
+        remote_host: &str,
+        remote_port: u32,
+    ) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().simple().to_string(),
+            name: name.into(),
+            connection_type: ConnectionType::Custom,
+            ssh_host: ssh_host.into(),
+            ssh_port,
+            ssh_user: ssh_user.into(),
+            identity_file: identity_file.into(),
+            local_bind: LocalBind::LoopbackV4,
+            local_port,
+            remote_host: remote_host.into(),
+            remote_port,
+        }
     }
 
     pub fn ssh_destination(&self) -> String {
-        if self.connection_type == ConnectionType::Custom && !self.ssh_user.trim().is_empty() { format!("{}@{}", self.ssh_user.trim(), self.ssh_host.trim()) } else { self.ssh_host.trim().to_string() }
+        if self.connection_type == ConnectionType::Custom && !self.ssh_user.trim().is_empty() {
+            format!("{}@{}", self.ssh_user.trim(), self.ssh_host.trim())
+        } else {
+            self.ssh_host.trim().to_string()
+        }
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        if self.name.trim().is_empty() { return Err("configuration name is required".into()); }
-        if self.ssh_host.trim().is_empty() { return Err("SSH host is required".into()); }
-        if self.remote_host.trim().is_empty() { return Err("remote host is required".into()); }
-        for host in [&self.ssh_host, &self.remote_host] { if host.chars().any(char::is_whitespace) || host.starts_with('-') || host.contains('\0') { return Err("host contains invalid characters".into()); } }
-        for port in [self.ssh_port, self.local_port, self.remote_port] { if !(1..=65535).contains(&port) { return Err("port must be between 1 and 65535".into()); } }
-        if self.id.trim().is_empty() { return Err("profile id is required".into()); }
+        if self.name.trim().is_empty() {
+            return Err("configuration name is required".into());
+        }
+        if self.ssh_host.trim().is_empty() {
+            return Err("SSH host is required".into());
+        }
+        if self.remote_host.trim().is_empty() {
+            return Err("remote host is required".into());
+        }
+        for host in [&self.ssh_host, &self.remote_host] {
+            if host.chars().any(char::is_whitespace) || host.starts_with('-') || host.contains('\0')
+            {
+                return Err("host contains invalid characters".into());
+            }
+        }
+        for port in [self.ssh_port, self.local_port, self.remote_port] {
+            if !(1..=65535).contains(&port) {
+                return Err("port must be between 1 and 65535".into());
+            }
+        }
+        if self.id.trim().is_empty() {
+            return Err("profile id is required".into());
+        }
         Ok(())
     }
 }
@@ -98,7 +163,16 @@ mod tests {
 
     #[test]
     fn builds_custom_user_destination() {
-        let profile = ForwardProfile::new_custom("web", "10.0.0.8", 2222, "alice", "C:/keys/work key", 8080, "internal.example", 80);
+        let profile = ForwardProfile::new_custom(
+            "web",
+            "10.0.0.8",
+            2222,
+            "alice",
+            "C:/keys/work key",
+            8080,
+            "internal.example",
+            80,
+        );
         profile.validate().unwrap();
         assert_eq!(profile.ssh_destination(), "alice@10.0.0.8");
     }
@@ -106,10 +180,15 @@ mod tests {
     #[test]
     fn rejects_invalid_ports_and_host_arguments() {
         let mut profile = ForwardProfile::new("bad", "server", 1, "localhost", 80);
-        profile.local_port = 0; assert!(profile.validate().is_err());
-        profile.local_port = 65536; assert!(profile.validate().is_err());
-        profile.local_port = 8080; profile.ssh_host = "-oProxyCommand=bad".into(); assert!(profile.validate().is_err());
-        profile.ssh_host = "two hosts".into(); assert!(profile.validate().is_err());
+        profile.local_port = 0;
+        assert!(profile.validate().is_err());
+        profile.local_port = 65536;
+        assert!(profile.validate().is_err());
+        profile.local_port = 8080;
+        profile.ssh_host = "-oProxyCommand=bad".into();
+        assert!(profile.validate().is_err());
+        profile.ssh_host = "two hosts".into();
+        assert!(profile.validate().is_err());
     }
 
     #[test]
@@ -119,6 +198,9 @@ mod tests {
         assert_eq!(TunnelStatus::Stopping.as_str(), "stopping");
         assert_eq!(TunnelStatus::Stopped.as_str(), "stopped");
         assert_eq!(TunnelStatus::Failed.as_str(), "failed");
-        assert_eq!(serde_json::to_string(&TunnelStatus::Running).unwrap(), "\"running\"");
+        assert_eq!(
+            serde_json::to_string(&TunnelStatus::Running).unwrap(),
+            "\"running\""
+        );
     }
 }

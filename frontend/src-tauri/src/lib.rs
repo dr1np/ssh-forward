@@ -11,11 +11,11 @@ use std::time::{Duration, Instant};
 pub(crate) mod backend;
 
 use serde_json::{json, Value};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State};
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
 
 use std::sync::atomic::AtomicBool;
 
@@ -114,11 +114,17 @@ fn spawn_backend(app: &AppHandle) -> Result<Arc<BackendConnection>, String> {
     let mut last_error = String::from("无法启动后端服务");
     let mut child = None;
     for mut command in commands {
-        command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         #[cfg(windows)]
         command.creation_flags(0x08000000); // CREATE_NO_WINDOW, retain JSONL pipes.
         match command.spawn() {
-            Ok(process) => { child = Some(process); break; }
+            Ok(process) => {
+                child = Some(process);
+                break;
+            }
             Err(error) => last_error = format!("无法启动后端服务：{error}"),
         }
     }
@@ -204,10 +210,16 @@ fn connection_for(app: &AppHandle, state: &BackendState) -> Result<Arc<BackendCo
         .lock()
         .map_err(|_| "Python 服务状态锁已损坏。".to_string())?;
     if let Some(connection) = guard.as_ref() {
-        let running = connection.child.lock()
+        let running = connection
+            .child
+            .lock()
             .map_err(|_| "后端进程锁已损坏")?
-            .try_wait().map_err(|error| error.to_string())?.is_none();
-        if running { return Ok(Arc::clone(connection)); }
+            .try_wait()
+            .map_err(|error| error.to_string())?
+            .is_none();
+        if running {
+            return Ok(Arc::clone(connection));
+        }
     }
     let connection = spawn_backend(app)?;
     *guard = Some(Arc::clone(&connection));
@@ -219,7 +231,9 @@ async fn backend_request(app: AppHandle, method: String, params: Value) -> Resul
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<BackendState>();
         request_blocking(&app, &state, method, params)
-    }).await.map_err(|error| error.to_string())?
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -227,7 +241,12 @@ fn tray_status(state: State<'_, TrayState>) -> bool {
     state.available.load(Ordering::Relaxed)
 }
 
-fn request_blocking(app: &AppHandle, state: &BackendState, method: String, params: Value) -> Result<Value, String> {
+fn request_blocking(
+    app: &AppHandle,
+    state: &BackendState,
+    method: String,
+    params: Value,
+) -> Result<Value, String> {
     let connection = connection_for(app, state)?;
     let request_id = state
         .next_request_id
@@ -270,7 +289,9 @@ fn request_blocking(app: &AppHandle, state: &BackendState, method: String, param
         Err(RecvTimeoutError::Timeout) => Err("等待 Python 服务响应超时。".to_string()),
         Err(RecvTimeoutError::Disconnected) => Err("Python 服务已断开。".to_string()),
     };
-    if let Ok(mut waiting) = connection.pending.lock() { waiting.remove(&request_id); }
+    if let Ok(mut waiting) = connection.pending.lock() {
+        waiting.remove(&request_id);
+    }
     result
 }
 
@@ -333,7 +354,10 @@ pub fn run() {
                             .map_err(|error| error.to_string())
                     });
                 if result.is_ok() {
-                    app_handle.state::<TrayState>().available.store(true, Ordering::Relaxed);
+                    app_handle
+                        .state::<TrayState>()
+                        .available
+                        .store(true, Ordering::Relaxed);
                 } else if let Err(error) = result {
                     eprintln!("无法创建系统托盘，关闭窗口将直接退出：{error}");
                 }

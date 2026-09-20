@@ -37,6 +37,15 @@ mod tests {
     }
 }
 
-pub fn format_forward_spec(local_bind: &str, local_port: u32, remote_host: &str, remote_port: u32) -> String {
-    format!("{}:{}", format_endpoint(local_bind, local_port), format_endpoint(remote_host, remote_port))
+pub fn format_forward_spec(
+    local_bind: &str,
+    local_port: u32,
+    remote_host: &str,
+    remote_port: u32,
+) -> String {
+    format!(
+        "{}:{}",
+        format_endpoint(local_bind, local_port),
+        format_endpoint(remote_host, remote_port)
+    )
 }
