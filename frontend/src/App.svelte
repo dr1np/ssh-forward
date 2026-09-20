@@ -2,12 +2,13 @@
   import { onMount } from "svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import ConfirmDialog from "./lib/components/ConfirmDialog.svelte";
+  import FavoritesPanel from "./lib/components/FavoritesPanel.svelte";
   import Icon from "./lib/components/Icon.svelte";
   import LogPanel from "./lib/components/LogPanel.svelte";
   import PortDialog from "./lib/components/PortDialog.svelte";
   import PreferencesModal from "./lib/components/PreferencesModal.svelte";
   import ProfileEditor from "./lib/components/ProfileEditor.svelte";
-  import TunnelCard from "./lib/components/TunnelCard.svelte";
+  import RunningPanel from "./lib/components/RunningPanel.svelte";
   import {
     backendLogToEntry,
     changeTunnelPort,
@@ -34,7 +35,7 @@
 
   const desktopRuntime = isDesktopRuntime();
   let preferences = $state<AppPreferences>(readPreferences());
-  let activeTab = $state<WorkspaceTab>("running");
+  let activeTab = $state<WorkspaceTab>("create");
   let profiles = $state<ForwardProfile[]>(desktopRuntime ? [] : [...sampleProfiles]);
   let tunnels = $state<ActiveTunnel[]>(desktopRuntime ? [] : [...sampleTunnels]);
   let logs = $state<LogEntry[]>(desktopRuntime ? [] : [...sampleLogs]);
@@ -51,6 +52,7 @@
   let pendingTunnels = $state<string[]>([]);
   let refreshing = false;
   let preferencesOpen = $state(false);
+  let localStatusOpen = $state(false);
   let portDialogTunnel = $state<ActiveTunnel | null>(null);
   let profileToDelete = $state<ForwardProfile | null>(null);
   let tunnelToDelete = $state<ActiveTunnel | null>(null);
@@ -89,13 +91,13 @@
   const selectProfile = (profile: ForwardProfile) => {
     selectedProfile = { ...profile };
     editorKey += 1;
-    activeTab = "running";
+    activeTab = "create";
   };
 
   const resetEditor = () => {
     selectedProfile = makeBlankProfile(hostAliases[0] ?? "");
     editorKey += 1;
-    activeTab = "running";
+    activeTab = "create";
   };
 
   const savePreferences = (next: AppPreferences) => {
@@ -533,7 +535,7 @@
   <div class="window-titlebar" data-tauri-drag-region>
     <div class="window-titlebar__identity" data-tauri-drag-region>
       <span class="window-titlebar__mark"><Icon name="link" size={13} /></span>
-      <span>SSH Forwarder</span>
+      <span>SSH 端口转发助手</span>
     </div>
     <div class="window-controls">
       <button class="window-control" type="button" aria-label="最小化" title="最小化" onclick={minimizeWindow}><Icon name="minus" size={14} /></button>
@@ -543,102 +545,92 @@
   </div>
 
   <div class="app-shell">
-  <aside class="sidebar">
-
-    <div class="sidebar-demo-note"><span class:demo-dot--green={desktopRuntime && backendReady} class="demo-dot"></span> {desktopRuntime ? (backendReady ? "桌面后端 · 已连接" : (backendError ? "桌面后端 · 未连接" : "桌面后端 · 连接中")) : "前端预览 · 演示数据"}</div>
-
-    <nav class="sidebar-nav" aria-label="工作区导航">
-      <button class:active={activeTab === "running"} type="button" onclick={() => (activeTab = "running")}><Icon name="link" size={17} /> 运行中的转发 <span>{tunnels.filter((item) => item.status === "running" || item.status === "connecting").length}</span></button>
-      <button class:active={activeTab === "favorites"} type="button" onclick={() => (activeTab = "favorites")}><Icon name="book" size={17} /> 收藏 <span>{profiles.length}</span></button>
-      <button class:active={activeTab === "logs"} type="button" onclick={() => (activeTab = "logs")}><Icon name="file" size={17} /> 日志 <span>{logs.length}</span></button>
-    </nav>
-
-    <div class="sidebar-section-label">系统</div>
-    <div class="sidebar-nav sidebar-nav--secondary">
-      <div class="system-status"><Icon name="server" size={17} /> OpenSSH <small>{desktopRuntime ? (backendReady ? (sshAvailable ? "可用" : "未安装") : "待检测") : "预览"}</small></div>
-      <button type="button" onclick={() => (preferencesOpen = true)}><Icon name="sliders" size={17} /> 偏好设置</button>
-    </div>
-
-    <div class="sidebar-footer">
-      <div class="sidebar-footer__status"><span class="status-dot" class:status-dot--green={backendReady}></span><span>{desktopRuntime ? (backendReady ? "本机服务正常" : "本机服务未连接") : "演示模式"}</span></div>
-      <div class="sidebar-footer__meta">{desktopRuntime ? "SSH Forwarder · v0.2.0" : "SSH Forwarder · 预览版"}</div>
-    </div>
-  </aside>
-
-  <main class="main-content">
-    <header class="topbar">
-      <div>
-        <span class="section-kicker">本地开发工具</span>
-        <h1>管理你的 SSH 连接</h1>
-      </div>
-      <div class="topbar-actions">
-        {#if copiedEndpoint}<span class="toast"><Icon name="check" size={15} /> 已复制 {copiedEndpoint}</span>{/if}
-        <button class="icon-button icon-button--large" type="button" title="打开偏好设置" aria-label="打开偏好设置" onclick={() => (preferencesOpen = true)}><Icon name="sliders" size={18} /></button>
-        <span class="profile-chip"><Icon name="server" size={16} /><span>本机</span></span>
-      </div>
-    </header>
-
-    {#if backendError}
-      <div class="backend-banner" role="alert"><span class="status-dot"></span><span>{backendError}</span>{#if !backendReady}<button class="button button--secondary" type="button" onclick={hydrateDesktop}>重新连接</button>{/if}<button type="button" onclick={() => (backendError = "")} aria-label="关闭错误提示"><Icon name="close" size={15} /></button></div>
-    {/if}
-
-    <div class="content-grid">
-      <div class="editor-column">
-        {#key editorKey}
-          <ProfileEditor disabled={!backendReady} initialProfile={selectedProfile} {hostAliases} autoSelectPort={preferences.autoSelectPort} onSave={saveProfile} onStart={startTunnel} onRefreshHosts={refreshHosts} onFindPort={getFreePort} onChooseIdentityFile={chooseIdentityPath} onReset={resetEditor} onStartAndSave={startAndSave} />
-        {/key}
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <span class="sidebar-brand__mark"><Icon name="link" size={15} /></span>
+        <div><strong>SSH Forwarder</strong><span>端口转发工作台</span></div>
       </div>
 
-      <section class="workspace-column">
-        <div class="workspace-header">
-          <div>
-            <span class="section-kicker">工作区</span>
-            <h2>{activeTab === "running" ? "运行中的转发" : activeTab === "favorites" ? "收藏配置" : "运行日志"}</h2>
+      <div class="sidebar-section-label">工作区</div>
+      <nav class="sidebar-nav" aria-label="工作区导航">
+        <button class:active={activeTab === "create"} type="button" onclick={() => (activeTab = "create")}><Icon name="plus" size={17} /> 新建转发</button>
+        <button class:active={activeTab === "running"} type="button" onclick={() => (activeTab = "running")}><Icon name="link" size={17} /> 运行中的转发 <span>{tunnels.filter((item) => item.status === "running" || item.status === "connecting").length}</span></button>
+        <button class:active={activeTab === "favorites"} type="button" onclick={() => (activeTab = "favorites")}><Icon name="book" size={17} /> 收藏 <span>{profiles.length}</span></button>
+        <button class:active={activeTab === "logs"} type="button" onclick={() => (activeTab = "logs")}><Icon name="file" size={17} /> 日志 <span>{logs.length}</span></button>
+      </nav>
+
+      <div class="sidebar-actions">
+        <div class="sidebar-section-label">工具</div>
+        <button type="button" onclick={() => (preferencesOpen = true)}><Icon name="sliders" size={17} /> 偏好设置</button>
+      </div>
+
+      <section class="sidebar-status" aria-label="系统状态">
+        <div class="sidebar-section-label">状态</div>
+        <div class="sidebar-status-card">
+          <div class="sidebar-status-row">
+            <span class="sidebar-status-row__icon"><Icon name="server" size={15} /></span>
+            <span><strong>Rust 后端</strong><small>{desktopRuntime ? (backendReady ? "已连接" : "未连接") : "预览模式"}</small></span>
+            <span class="status-dot" class:status-dot--green={backendReady}></span>
           </div>
-          {#if activeTab === "running"}
-            <div class="workspace-summary"><span class="summary-number">{tunnels.filter((item) => item.status === "running").length}</span><span>条连接正在运行</span>{#if tunnels.some((item) => item.status === "stopped" || item.status === "failed")}<button class="button button--quiet" type="button" onclick={clearFinished}>清理已结束</button>{/if}</div>
-          {:else if activeTab === "favorites"}
-            <button class="button button--secondary" type="button" onclick={resetEditor}><Icon name="plus" size={16} /> 新建转发</button>
-          {/if}
+          <div class="sidebar-status-row">
+            <span class="sidebar-status-row__icon"><Icon name="server" size={15} /></span>
+            <span><strong>OpenSSH</strong><small>{desktopRuntime ? (backendReady ? (sshAvailable ? "可用" : "未安装") : "待检测") : "预览"}</small></span>
+            <span class="status-dot" class:status-dot--green={sshAvailable}></span>
+          </div>
         </div>
-
-        {#if activeTab === "running"}
-          <div class="tunnel-list">
-            {#each tunnels as tunnel (tunnel.id)}
-              <TunnelCard busy={pendingTunnels.includes(tunnel.id)} tunnel={tunnel} selected={selectedTunnelId === tunnel.id} onSelect={selectTunnel} onCopy={copyEndpoint} onPortChange={changePort} onStop={stopTunnel} onRestart={restartTunnel} onDelete={requestDeleteTunnel} />
-            {:else}
-              <div class="empty-state">
-                <span class="empty-state__icon"><Icon name="link" size={22} /></span>
-                <h3>暂无运行中的转发</h3>
-                <p>在左侧填写连接信息，然后启动第一条本地隧道。</p>
-              </div>
-            {/each}
-          </div>
-        {:else if activeTab === "favorites"}
-          <div class="favorites-list">
-            {#each profiles as profile (profile.id)}
-              <article class="favorite-row" ondblclick={(event) => { if (!(event.target as HTMLElement).closest("button")) void startTunnel(profile); }}>
-                <div class="favorite-icon"><Icon name="book" size={17} /></div>
-                <div class="favorite-main">
-                  <div class="eyebrow-row"><h3>{profile.name}</h3>{#if profile.isSample}<span class="sample-label">演示数据</span>{/if}</div>
-                  <p>{profile.sshHost} · {formatLocalEndpoint(profile)} → {formatRemoteEndpoint(profile)}</p>
-                </div>
-                <div class="favorite-actions">
-                  <button class="icon-button" type="button" title="编辑配置" aria-label="编辑配置" onclick={() => selectProfile(profile)}><Icon name="edit" size={16} /></button>
-                  <button class="icon-button icon-button--danger" type="button" title="删除收藏" aria-label="删除收藏" onclick={() => requestDeleteProfile(profile)}><Icon name="trash" size={16} /></button>
-                  <button class="button button--primary button--small" type="button" disabled={!backendReady || pendingStarts.includes(profile.id)} onclick={() => startTunnel(profile)}><Icon name="play" size={14} /> 启动</button>
-                </div>
-              </article>
-            {:else}
-              <div class="empty-state"><span class="empty-state__icon"><Icon name="book" size={22} /></span><h3>暂无收藏配置</h3><p>在左侧填写配置并保存收藏，下次即可一键启动。</p></div>
-            {/each}
-          </div>
-        {:else}
-          <LogPanel logs={logs} onClear={clearLogs} />
-        {/if}
       </section>
-    </div>
-  </main>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-footer__meta">{desktopRuntime ? "SSH Forwarder · v0.2.1" : "SSH Forwarder · 预览版"}</div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div>
+          <span class="section-kicker">{activeTab === "create" ? "新建连接" : "工作区"}</span>
+          <h1>{activeTab === "create" ? "新增 SSH 转发" : activeTab === "running" ? "运行中的转发" : activeTab === "favorites" ? "收藏配置" : "运行日志"}</h1>
+        </div>
+        <div class="topbar-actions">
+          {#if copiedEndpoint}<span class="toast"><Icon name="check" size={15} /> 已复制 {copiedEndpoint}</span>{/if}
+          <div class="local-status">
+            <button class="profile-chip" class:profile-chip--open={localStatusOpen} type="button" aria-expanded={localStatusOpen} aria-controls="local-status-popover" onclick={() => (localStatusOpen = !localStatusOpen)}>
+              <span class="profile-avatar"><Icon name="server" size={15} /></span><span>本机</span><Icon name="chevron" size={14} />
+            </button>
+            {#if localStatusOpen}
+              <div id="local-status-popover" class="local-status-popover" role="status">
+                <div class="local-status-popover__heading"><strong>本机状态</strong><span>当前环境</span></div>
+                <div class="local-status-popover__row"><span>Rust 后端</span><strong>{backendReady ? "已连接" : "未连接"}</strong></div>
+                <div class="local-status-popover__row"><span>OpenSSH</span><strong>{sshAvailable ? "可用" : "未检测到"}</strong></div>
+                <div class="local-status-popover__row"><span>活动转发</span><strong>{tunnels.filter((item) => item.status === "running" || item.status === "connecting").length}</strong></div>
+                {#if !backendReady}<button class="button button--secondary button--small" type="button" onclick={hydrateDesktop}>重新检测</button>{/if}
+              </div>
+            {/if}
+          </div>
+        </div>
+      </header>
+
+      {#if backendError}
+        <div class="backend-banner" role="alert"><span class="status-dot"></span><span>{backendError}</span>{#if !backendReady}<button class="button button--secondary" type="button" onclick={hydrateDesktop}>重新连接</button>{/if}<button type="button" onclick={() => (backendError = "")} aria-label="关闭错误提示"><Icon name="close" size={15} /></button></div>
+      {/if}
+
+      {#if activeTab === "create"}
+        <div class="content-grid content-grid--create">
+          <div class="editor-column">
+            {#key editorKey}
+              <ProfileEditor disabled={!backendReady} initialProfile={selectedProfile} {hostAliases} autoSelectPort={preferences.autoSelectPort} onSave={saveProfile} onStart={startTunnel} onRefreshHosts={refreshHosts} onFindPort={getFreePort} onChooseIdentityFile={chooseIdentityPath} onReset={resetEditor} onStartAndSave={startAndSave} />
+            {/key}
+          </div>
+          <RunningPanel tunnels={tunnels.filter((item) => item.status === "running" || item.status === "connecting")} {selectedTunnelId} {pendingTunnels} emptyMessage="填写左侧配置并启动后，这里会显示正在运行的连接。" onSelect={selectTunnel} onCopy={copyEndpoint} onPortChange={changePort} onStop={stopTunnel} onRestart={restartTunnel} onDelete={requestDeleteTunnel} onClear={clearFinished} />
+        </div>
+      {:else if activeTab === "running"}
+        <RunningPanel tunnels={tunnels} {selectedTunnelId} {pendingTunnels} emptyMessage="打开新建转发页面，填写连接信息后启动第一条本地隧道。" onSelect={selectTunnel} onCopy={copyEndpoint} onPortChange={changePort} onStop={stopTunnel} onRestart={restartTunnel} onDelete={requestDeleteTunnel} onClear={clearFinished} />
+      {:else if activeTab === "favorites"}
+        <FavoritesPanel {profiles} {backendReady} {pendingStarts} onEdit={selectProfile} onDelete={requestDeleteProfile} onStart={startTunnel} />
+      {:else}
+        <section class="page-panel page-panel--logs"><LogPanel logs={logs} onClear={clearLogs} /></section>
+      {/if}
+    </main>
   </div>
 </div>
 

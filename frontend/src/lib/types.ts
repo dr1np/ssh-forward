@@ -7,7 +7,7 @@ export type TunnelStatus =
   | "stopped"
   | "failed";
 
-export type WorkspaceTab = "running" | "favorites" | "logs";
+export type WorkspaceTab = "create" | "running" | "favorites" | "logs";
 
 export interface ForwardProfile {
   id: string;

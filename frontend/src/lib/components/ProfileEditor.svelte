@@ -95,14 +95,15 @@
       <button class="button button--quiet editor-reset" type="button" disabled={busy} onclick={onReset}>新建</button>
   </div>
 
-  <div class="connection-tabs" role="tablist" aria-label="连接类型">
-    <button class:active={connectionType === "config"} type="button" role="tab" aria-selected={connectionType === "config"} onclick={() => (connectionType = "config")}>
-      <Icon name="file" size={16} /> SSH Config
-    </button>
-    <button class:active={connectionType === "custom"} type="button" role="tab" aria-selected={connectionType === "custom"} onclick={() => (connectionType = "custom")}>
-      <Icon name="sliders" size={16} /> 自定义主机
-    </button>
-  </div>
+  <div class="editor-form-content">
+    <div class="connection-tabs" role="tablist" aria-label="连接类型">
+      <button class:active={connectionType === "config"} type="button" role="tab" aria-selected={connectionType === "config"} onclick={() => (connectionType = "config")}>
+        <Icon name="file" size={16} /> SSH Config
+      </button>
+      <button class:active={connectionType === "custom"} type="button" role="tab" aria-selected={connectionType === "custom"} onclick={() => (connectionType = "custom")}>
+        <Icon name="sliders" size={16} /> 自定义主机
+      </button>
+    </div>
 
   {#if connectionType === "config"}
     <div class="field-block">
@@ -188,10 +189,12 @@
     </div>
   </div>
 
-  <p class="form-note"><Icon name="link" size={15} /> 目标地址由 SSH 服务器解析，适合访问服务器内网服务。</p>
+    <p class="form-note"><Icon name="link" size={15} /> 目标地址由 SSH 服务器解析，适合访问服务器内网服务。</p>
 
-  {#if error}<p id="editor-error" class="dialog-error editor-error" role="alert">{error}</p>{/if}
-  {#if busy}<p class="field-help" role="status">正在处理，请稍候…</p>{/if}
+    {#if error}<p id="editor-error" class="dialog-error editor-error" role="alert">{error}</p>{/if}
+    {#if busy}<p class="field-help" role="status">正在处理，请稍候…</p>{/if}
+  </div>
+
   <div class="editor-actions">
     <button class="button button--primary" type="button" disabled={disabled || busy || findingPort} onclick={() => submit(onStart)}><Icon name="play" size={16} /> 启动转发</button>
     <button class="button button--secondary" type="button" disabled={disabled || busy || findingPort} onclick={() => submit(onSave)}><Icon name="book" size={16} /> 保存收藏</button>
