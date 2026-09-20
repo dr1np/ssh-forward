@@ -18,6 +18,12 @@ Windows 发行包自带 Python sidecar，因此用户只需要 Windows 10/11、W
 
 从源码运行 Python service 或旧版 Tk 界面时，需要 Python 3.10 或更高版本。
 
+Python 运行时只使用标准库，不需要安装运行时依赖。仓库中的依赖文件分别用于不同场景：
+
+- `requirements-build.txt`：使用 PyInstaller 打包独立 sidecar 时安装。
+- `requirements-test.txt`：运行真实 loopback SSH 集成测试时安装 Paramiko。
+- `frontend/package-lock.json`：锁定 Svelte/Vite/Tauri 前端依赖，进入 `frontend/` 后运行 `npm ci`。
+
 ## 启动
 
 双击 [`启动SSH端口转发助手.bat`](./启动SSH端口转发助手.bat) 即可无控制台启动。
@@ -31,6 +37,8 @@ python main.py
 ## Tauri 桌面版与系统托盘
 
 正式桌面版位于 [`frontend/`](./frontend/)，使用 Svelte/Vite + Tauri。关闭窗口会收纳到系统托盘并保持转发，右键托盘图标可以显示主窗口，或退出并停止所有转发。偏好设置可以关闭这一行为，改为直接退出确认。
+
+正式版由两个可执行文件组成：`SSHForwarder.exe` 是 Tauri 界面和 Rust bridge；`ssh-forwarder-service.exe` 是由 Python service 打包得到的后台 sidecar。界面通过标准输入输出上的 JSON Lines 请求 sidecar，sidecar 负责读取 SSH 配置、保存收藏、启动和监控 OpenSSH 转发。sidecar 不是第二个用户界面，必须随主程序一起分发；开发模式则直接启动 `python -m ssh_forwarder.service`。
 
 浏览器预览使用显式标记的演示数据；Tauri 开发运行时通过 Rust bridge 启动仓库内 Python service。旧版 Tk 界面和源码 service 仍保留用于兼容与测试。
 
