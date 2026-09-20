@@ -561,7 +561,7 @@
 
     <div class="sidebar-footer">
       <div class="sidebar-footer__status"><span class="status-dot" class:status-dot--green={backendReady}></span><span>{desktopRuntime ? (backendReady ? "本机服务正常" : "本机服务未连接") : "演示模式"}</span></div>
-      <div class="sidebar-footer__meta">{desktopRuntime ? "SSH Forwarder · v0.1.0" : "SSH Forwarder · 预览版"}</div>
+      <div class="sidebar-footer__meta">{desktopRuntime ? "SSH Forwarder · v0.2.0" : "SSH Forwarder · 预览版"}</div>
     </div>
   </aside>
 

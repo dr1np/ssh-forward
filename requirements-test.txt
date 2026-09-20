@@ -1,2 +1,0 @@
-# Only used by the loopback SSH integration fixture, never bundled in the app.
-paramiko==4.0.0

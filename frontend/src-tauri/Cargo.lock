@@ -2903,8 +2903,9 @@ dependencies = [
 
 [[package]]
 name = "ssh-forwarder"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
+ "glob",
  "serde",
  "serde_json",
  "tauri",

@@ -1,8 +1,5 @@
 {
   "build": {
-    "beforeBuildCommand": "npm run build && python ../scripts/build_sidecar.py"
-  },
-  "bundle": {
-    "externalBin": ["binaries/ssh-forwarder-service"]
+    "beforeBuildCommand": "npm run build"
   }
 }

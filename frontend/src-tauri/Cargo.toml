@@ -1,6 +1,6 @@
 [package]
 name = "ssh-forwarder"
-version = "0.1.0"
+version = "0.2.0"
 description = "A lightweight SSH local port forwarding desktop app"
 authors = ["SSH Forwarder contributors"]
 license = ""
@@ -17,6 +17,12 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [features]
 custom-protocol = ["tauri/custom-protocol"]
 default = ["custom-protocol"]
+test-helper = []
+
+[[bin]]
+name = "ssh_forwarder_test_helper"
+path = "test_support/fake_ssh.rs"
+required-features = ["test-helper"]
 
 [build-dependencies]
 tauri-build = { version = "2.6.3", features = [] }
@@ -25,5 +31,6 @@ tauri-build = { version = "2.6.3", features = [] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 uuid = { version = "1.26", features = ["v4", "serde"] }
+glob = "0.3"
 tauri = { version = "2.11.3", features = ["tray-icon"] }
 tauri-plugin-dialog = "2"

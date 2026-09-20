@@ -69,6 +69,14 @@ impl RuntimeTunnelManager {
         config_file: Option<&Path>,
     ) -> Result<TunnelView, String> {
         profile.validate()?;
+        if !self
+            .inner
+            .lock()
+            .map_err(|_| "转发状态锁已损坏".to_string())?
+            .accepting_starts
+        {
+            return Err("应用正在关闭，无法启动新的转发。".into());
+        }
         let executable = self.ssh_executable.as_ref().ok_or_else(|| {
             "未找到 OpenSSH 客户端。请安装 OpenSSH 并确保 ssh 位于 PATH 中。".to_string()
         })?;
@@ -104,6 +112,10 @@ impl RuntimeTunnelManager {
                 .lock()
                 .map_err(|_| "转发状态锁已损坏".to_string())?;
             if !inner.accepting_starts {
+                if let Ok(mut child) = process.lock() {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
                 return Err("应用正在关闭，无法启动新的转发。".into());
             }
             inner.tunnels.insert(
@@ -134,6 +146,14 @@ impl RuntimeTunnelManager {
                 for line in BufReader::new(stderr).lines().map_while(Result::ok) {
                     let clean = line.trim().to_string();
                     if !clean.is_empty() {
+                        if let Ok(mut pending) = events.lock() {
+                            pending.push(TunnelEvent {
+                                event_type: "log".into(),
+                                tunnel_id: id.clone(),
+                                message: clean.clone(),
+                                tunnel: None,
+                            });
+                        }
                         messages.push(clean);
                     }
                 }
@@ -213,16 +233,6 @@ impl RuntimeTunnelManager {
         let Some(tunnel) = inner.tunnels.get_mut(id) else {
             return false;
         };
-        let alive = tunnel
-            .process
-            .lock()
-            .ok()
-            .and_then(|mut child| child.try_wait().ok())
-            .flatten()
-            .is_none();
-        if !alive {
-            return false;
-        }
         if tunnel.status == TunnelStatus::Running {
             return true;
         }
@@ -259,14 +269,27 @@ impl RuntimeTunnelManager {
             tunnel.status = TunnelStatus::Stopping;
             tunnel.process.clone()
         };
-        let mut child = process.lock().map_err(|_| "SSH 进程锁已损坏")?;
-        if child.try_wait().map_err(|e| e.to_string())?.is_none() {
-            child.kill().map_err(|e| format!("无法停止 SSH：{e}"))?;
+        let kill_error = process
+            .lock()
+            .map_err(|_| "SSH 进程锁已损坏".to_string())?
+            .kill()
+            .err()
+            .map(|error| format!("无法停止 SSH：{error}"));
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            match self.view(id) {
+                None => return Ok(()),
+                Some(view)
+                    if matches!(view.status, TunnelStatus::Stopped | TunnelStatus::Failed) =>
+                {
+                    return Ok(());
+                }
+                Some(_) if Instant::now() >= deadline => {
+                    return Err(kill_error.unwrap_or_else(|| "SSH 进程未能停止。".into()));
+                }
+                Some(_) => thread::sleep(Duration::from_millis(20)),
+            }
         }
-        child
-            .wait()
-            .map_err(|e| format!("无法确认 SSH 已停止：{e}"))?;
-        Ok(())
     }
 
     pub fn change_port(
@@ -283,6 +306,9 @@ impl RuntimeTunnelManager {
             TunnelStatus::Connecting | TunnelStatus::Running
         ) {
             return Err("找不到运行中的转发".into());
+        }
+        if current.profile.local_port == port {
+            return Ok(current);
         }
         let mut replacement_profile = current.profile.clone();
         replacement_profile.local_port = port;
@@ -301,7 +327,11 @@ impl RuntimeTunnelManager {
             {
                 let _ = self.stop(&candidate.id);
                 let _ = self.remove_finished(&candidate.id);
-                return Err(view.last_error);
+                return Err(if view.last_error.is_empty() {
+                    "新连接建立失败，原转发保持运行。".into()
+                } else {
+                    view.last_error
+                });
             }
             thread::sleep(Duration::from_millis(100));
         }

@@ -54,6 +54,7 @@ mod tests {
 }
 use super::endpoint::format_forward_spec;
 use super::model::{ConnectionType, ForwardProfile};
+use std::path::PathBuf;
 
 pub fn build_ssh_command(
     ssh_executable: &str,
@@ -91,9 +92,30 @@ pub fn build_ssh_command(
     if profile.connection_type == ConnectionType::Custom {
         command.extend(["-p".into(), profile.ssh_port.to_string()]);
         if !profile.identity_file.trim().is_empty() {
-            command.extend(["-i".into(), profile.identity_file.clone()]);
+            command.extend(["-i".into(), expand_identity_path(&profile.identity_file)]);
         }
     }
     command.push(profile.ssh_destination());
     Ok(command)
+}
+
+fn expand_identity_path(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed == "~" {
+        return home_dir().to_string_lossy().into_owned();
+    }
+    if let Some(rest) = trimmed
+        .strip_prefix("~/")
+        .or_else(|| trimmed.strip_prefix("~\\"))
+    {
+        return home_dir().join(rest).to_string_lossy().into_owned();
+    }
+    trimmed.to_string()
+}
+
+fn home_dir() -> PathBuf {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
 }

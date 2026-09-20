@@ -1,46 +1,20 @@
 # SSH Forwarder frontend
 
-这是 SSH 端口转发助手的 Svelte/Vite + Tauri 前端。浏览器预览使用演示数据，Tauri 运行时会通过 Rust bridge 启动 JSONL sidecar，并连接现有 SSH 核心。
-
-桌面版支持关闭窗口后收纳到系统托盘。右键托盘图标可以显示窗口，或退出并停止所有转发；偏好设置可以关闭收纳行为。
-
-浏览器预览仍使用显式标记的演示数据；Tauri debug 运行时已经接入 Python 核心。后续迁移顺序：
-
-1. 完善 Python sidecar 打包和跨平台启动；
-2. 将核心模块迁移到 Rust；
-3. 移除 Python sidecar。
+这是 SSH 端口转发助手的 Svelte/Vite + Tauri 前端。浏览器预览使用明确标记的演示数据，Tauri 运行时直接调用同一个 Rust 后端核心；桌面包只有一个可执行文件，不启动 Python service 或 sidecar。
 
 ## 本地开发
 
 ```powershell
-npm install
+npm ci
 npm run dev
 ```
 
-## 检查与构建
+`npm run tauri dev` 需要 MSVC Rust toolchain、Visual Studio C++ Build Tools、WebView2 和系统 OpenSSH。生产构建使用：
 
 ```powershell
 npm run check
 npm run build
-npm run tauri dev
-```
-
-`npm run tauri dev` 需要 Windows 的 MSVC Rust toolchain、Visual Studio C++ Build Tools 和 WebView2。开发模式启动 `python -m ssh_forwarder.service`；正式版会把 PyInstaller sidecar 放入 Tauri 资源目录，不依赖用户安装 Python。
-
-Tauri debug 构建：
-
-```powershell
-npm run tauri build -- --debug --no-bundle
-```
-
-V0.1 Windows portable 构建从仓库根目录执行：
-
-```powershell
-uv venv .venv --python 3.13
-uv pip install --python .venv/Scripts/python.exe -r requirements-build.txt
-$env:PATH = "$PWD\..\.venv\Scripts;$env:USERPROFILE\.cargo\bin;" + $env:PATH
-cd frontend
 npm run desktop:build -- --no-bundle
-cd ..
-.venv/Scripts/python.exe scripts/package_release.py --version 0.1.0
 ```
+
+关闭窗口时，应用会按偏好设置收进系统托盘并保持转发；从托盘退出会请求 Rust 后端停止所有 SSH 子进程。

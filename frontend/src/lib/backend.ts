@@ -99,7 +99,8 @@ export async function loadSnapshot(): Promise<BackendSnapshot> {
   ]);
   return {
     hosts,
-    sshAvailable: status.ssh_available,    profiles: profilesResult.profiles,
+    sshAvailable: status.ssh_available,
+    profiles: profilesResult.profiles,
     tunnels,
     warning: profilesResult.warning,
   };

@@ -1,19 +1,18 @@
 @echo off
 cd /d "%~dp0"
 
-where pyw >nul 2>nul
-if not errorlevel 1 (
-    start "" pyw -3 main.py
+set "APP=%~dp0SSHForwarder.exe"
+if exist "%APP%" (
+    start "" "%APP%"
     exit /b 0
 )
 
-where pythonw >nul 2>nul
-if not errorlevel 1 (
-    start "" pythonw main.py
+set "APP=%~dp0frontend\src-tauri\target\release\ssh-forwarder.exe"
+if exist "%APP%" (
+    start "" "%APP%"
     exit /b 0
 )
 
-echo 未找到 Python。请先安装 Python 3.10 或更高版本，并勾选 Add Python to PATH。
+echo 未找到 SSHForwarder.exe。请先按 README.md 中的说明构建桌面程序。
 pause
 exit /b 1
-

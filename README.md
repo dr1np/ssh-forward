@@ -1,108 +1,65 @@
 # SSH 端口转发助手
 
-一个跨平台桌面工具，用来集中管理 SSH 本地端口转发。它直接调用系统 OpenSSH，不保存账号密码。
+一个跨平台桌面工具，用来集中管理 SSH 本地端口转发。桌面后端完全由 Rust 实现，直接调用系统 OpenSSH，不保存账号密码，也不需要 Python 或独立 service 可执行文件。
 
-## 能做什么
+## 功能
 
-- 自动读取 `%USERPROFILE%\.ssh\config` 中的具体 `Host` 别名，并支持 `Include` 配置。
-- 也可直接填写 IP / 域名、SSH 端口、用户名和私钥。
-- 同时运行多条本地转发，随时停止、复制本地地址或更换本地端口。
+- 自动读取 SSH config 中的具体 `Host` 别名，支持 `Include`、通配 Include、引号、环境变量和循环保护。
+- 也可以直接填写 IP 或域名、SSH 端口、用户名和私钥路径。
+- 同时运行多条本地转发，支持停止、复制本地地址和无损更换本地端口。
 - 收藏常用配置，双击即可启动。
 - 自动寻找空闲本地端口。
-- 支持仅本机监听（`127.0.0.1` / `::1`）和局域网监听（`0.0.0.0`，启动前会警告）。
-- SSH 连接失败时在界面中显示原始错误日志。
+- 支持 `127.0.0.1`、`::1` 和 `0.0.0.0` 监听；选择局域网监听时会先提示风险。
+- SSH 失败时在界面日志中显示错误输出，并保留失败记录供重试或清理。
 
 ## 运行环境
 
-Windows 发行包自带 Python sidecar，因此用户只需要 Windows 10/11、WebView2 和 Windows OpenSSH 客户端。Windows 11 通常已自带 OpenSSH；如果界面提示未找到，请前往“设置 → 系统 → 可选功能”安装 **OpenSSH 客户端**。
+发行包只包含一个 Tauri 桌面可执行文件。运行时需要：
 
-从源码运行 Python service 或旧版 Tk 界面时，需要 Python 3.10 或更高版本。
+- Windows 10/11、WebView2 和 Windows OpenSSH Client；
+- Linux 的 WebKitGTK、桌面运行库和系统 OpenSSH；
+- macOS 的 WebKit、系统 OpenSSH。
 
-Python 运行时只使用标准库，不需要安装运行时依赖。仓库中的依赖文件分别用于不同场景：
+OpenSSH 可执行文件必须位于系统 `PATH` 中。收藏保存在 Windows 的 `%APPDATA%\\SSHForwarder\\settings.json`，Linux 的 `$XDG_CONFIG_HOME/SSHForwarder/settings.json`，macOS 的 `~/Library/Application Support/SSHForwarder/settings.json`。
 
-- `requirements-build.txt`：使用 PyInstaller 打包独立 sidecar 时安装。
-- `requirements-test.txt`：运行真实 loopback SSH 集成测试时安装 Paramiko。
-- `frontend/package-lock.json`：锁定 Svelte/Vite/Tauri 前端依赖，进入 `frontend/` 后运行 `npm ci`。
-
-## 启动
-
-双击 [`启动SSH端口转发助手.bat`](./启动SSH端口转发助手.bat) 即可无控制台启动。
-
-如果需要查看 Python 自身的报错，可双击 [`调试运行.bat`](./调试运行.bat)，或在项目目录运行：
-
-```powershell
-python main.py
-```
-
-## Tauri 桌面版与系统托盘
-
-正式桌面版位于 [`frontend/`](./frontend/)，使用 Svelte/Vite + Tauri。关闭窗口会收纳到系统托盘并保持转发，右键托盘图标可以显示主窗口，或退出并停止所有转发。偏好设置可以关闭这一行为，改为直接退出确认。
-
-正式版由两个可执行文件组成：`SSHForwarder.exe` 是 Tauri 界面和 Rust bridge；`ssh-forwarder-service.exe` 是由 Python service 打包得到的后台 sidecar。界面通过标准输入输出上的 JSON Lines 请求 sidecar，sidecar 负责读取 SSH 配置、保存收藏、启动和监控 OpenSSH 转发。sidecar 不是第二个用户界面，必须随主程序一起分发；开发模式则直接启动 `python -m ssh_forwarder.service`。
-
-浏览器预览使用显式标记的演示数据；Tauri 开发运行时通过 Rust bridge 启动仓库内 Python service。旧版 Tk 界面和源码 service 仍保留用于兼容与测试。
+## 开发与检查
 
 ```powershell
 cd frontend
-npm install
-npm run dev
-```
-
-安装 Rust、Visual Studio C++ Build Tools 和 WebView2 后，可运行桌面壳：
-
-```powershell
+npm ci
+npm run check
+npm run build
 npm run tauri dev
 ```
 
-检查和生产构建：
+Rust 后端测试：
 
 ```powershell
-npm run check
-npm run build
+cargo test --manifest-path frontend/src-tauri/Cargo.toml
+cargo test --manifest-path frontend/src-tauri/Cargo.toml --features test-helper --test runtime_integration
 ```
 
-从仓库根目录准备 Windows V0.1 portable 包（以下命令中的 `$PWD` 指仓库根目录）：
+第二条命令启动仓库内的 Rust 假 SSH 进程，覆盖启动、就绪、错误、停止、端口冲突和端口切换，不依赖 Python。
+
+## 构建与打包
+
+Windows 本地构建：
 
 ```powershell
-uv venv .venv --python 3.13
-uv pip install --python .venv/Scripts/python.exe -r requirements-build.txt
-$env:PATH = "$PWD\.venv\Scripts;$env:USERPROFILE\.cargo\bin;" + $env:PATH
 cd frontend
 npm run desktop:build -- --no-bundle
 cd ..
-.venv/Scripts/python.exe scripts/package_release.py --version 0.1.0
+powershell -ExecutionPolicy Bypass -File scripts/package_release.ps1 -Version 0.2.0
 ```
 
-构建记录和平台限制见 [`docs/release-v0.1.md`](docs/release-v0.1.md)。Linux 需要 WebKitGTK 和系统 OpenSSH；macOS 需要 WebKit、系统 OpenSSH，当前本地包未签名。
+构建结果位于 `artifacts/v0.2.0/`。Windows portable 压缩包内只有 `SSHForwarder.exe` 和使用说明，不再有 `ssh-forwarder-service.exe`。Linux 的 AppImage/deb 可以使用 `scripts/Dockerfile.linux` 中的工具链构建；macOS 需要在 macOS 主机上运行相同的 Tauri 构建命令。
 
-## 使用方法
+## 使用
 
-1. 在左侧选择 **SSH Config** 主机，或切换到 **自定义主机** 填写连接信息。
-2. 填写本地监听端口和 SSH 服务器一侧可以访问的目标地址、目标端口。
-3. 点击 **启动转发**。成功后，本地应用连接界面所示的 `localhost:端口` 即可。
-4. 选中运行中的转发，可以复制地址、停止，或更换本地端口（工具会自动重启该 SSH 通道）。
-5. 点击 **保存收藏**，之后可在收藏页双击快速启动。
+1. 在左侧选择 SSH Config 主机，或切换到自定义主机填写连接信息。
+2. 填写本地监听端口、远端目标地址和目标端口。
+3. 点击“启动转发”。连接建立后，使用界面显示的本地地址连接。
+4. 选中运行中的转发，可以复制地址、停止或更换本地端口。更换端口会先确认新通道就绪，再停止旧通道。
+5. 点击“保存收藏”，之后可以从收藏页快速启动。
 
-例如，通过 SSH 主机 `production` 访问服务器本机的 PostgreSQL：
-
-| 配置项 | 示例 |
-| --- | --- |
-| SSH Config 主机 | `production` |
-| 本地端口 | `15432` |
-| 目标主机 | `127.0.0.1` |
-| 目标端口 | `5432` |
-
-然后让本地数据库客户端连接 `localhost:15432`。
-
-## 认证与安全
-
-- 工具采用非交互认证，不会弹窗索取或保存 SSH 密码。请提前配置 SSH 密钥，或把密钥加入 `ssh-agent`。
-- 首次连接的新主机会采用 OpenSSH 的 `accept-new` 策略记录主机指纹；已记录主机的指纹发生变化时仍会拒绝连接。
-- 默认只监听 `127.0.0.1`，外部设备不能直接访问。仅在确有需要时选择 `0.0.0.0`，并同时检查 Windows 防火墙规则。
-- 收藏保存在 `%APPDATA%\SSHForwarder\settings.json`。其中只包含主机、端口和私钥路径等配置，不包含私钥内容或密码。
-
-## 测试
-
-```powershell
-python -m unittest discover -s tests -v
-```
+工具使用 `BatchMode=yes`，不会弹窗索取或保存 SSH 密码。请预先配置 SSH 密钥或 ssh-agent。首次连接的新主机会使用 `accept-new` 记录主机指纹；已有主机的指纹变化仍会被拒绝。

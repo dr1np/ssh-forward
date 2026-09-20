@@ -1,20 +1,17 @@
 @echo off
 cd /d "%~dp0"
 
-where py >nul 2>nul
-if not errorlevel 1 (
-    py -3 main.py
-    if errorlevel 1 pause
-    exit /b
+if not exist "frontend\node_modules" (
+    echo 未找到前端依赖，请先在 frontend 目录运行 npm ci。
+    pause
+    exit /b 1
 )
 
-where python >nul 2>nul
-if not errorlevel 1 (
-    python main.py
-    if errorlevel 1 pause
-    exit /b
-)
-
-echo 未找到 Python。请先安装 Python 3.10 或更高版本，并勾选 Add Python to PATH。
+pushd frontend
+npm run tauri dev
+set "EXITCODE=%ERRORLEVEL%"
+popd
+if not "%EXITCODE%"=="0" pause
+exit /b %EXITCODE%
 pause
 exit /b 1
