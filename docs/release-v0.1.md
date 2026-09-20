@@ -1,6 +1,6 @@
 # SSH Forwarder release notes
 
-仓库早期的 `v0.1.0` 发布包使用 Python sidecar，`v0.2.0` 是 Rust 后端的首个单 exe 版本。当前界面优化版本为 `v0.2.1`；旧 tag 仍保留，便于复现历史包。
+仓库早期的 `v0.1.0` 发布包使用 Python sidecar，`v0.2.0` 是 Rust 后端的首个单 exe 版本。当前 Logo 修正版为 `v0.2.2`；旧 tag 仍保留，便于复现历史包。
 
 ## Windows
 
@@ -11,7 +11,7 @@ cd frontend
 npm ci
 npm run desktop:build -- --no-bundle
 cd ..
-powershell -ExecutionPolicy Bypass -File scripts/package_release.ps1 -Version 0.2.1
+powershell -ExecutionPolicy Bypass -File scripts/package_release.ps1 -Version 0.2.2
 ```
 
 脚本会把 `frontend/src-tauri/target/release/ssh-forwarder.exe` 复制为

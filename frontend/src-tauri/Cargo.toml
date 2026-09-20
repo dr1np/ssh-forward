@@ -1,6 +1,6 @@
 [package]
 name = "ssh-forwarder"
-version = "0.2.1"
+version = "0.2.2"
 description = "A lightweight SSH local port forwarding desktop app"
 authors = ["SSH Forwarder contributors"]
 license = ""

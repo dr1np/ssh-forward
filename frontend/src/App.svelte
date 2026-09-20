@@ -534,8 +534,8 @@
 <div class="app-window">
   <div class="window-titlebar" data-tauri-drag-region>
     <div class="window-titlebar__identity" data-tauri-drag-region>
-      <span class="window-titlebar__mark"><Icon name="link" size={13} /></span>
-      <span>SSH 端口转发助手</span>
+      <img class="window-titlebar__logo" src="/ssh-forward-logo.svg" alt="" />
+      <span>SSH Forward</span>
     </div>
     <div class="window-controls">
       <button class="window-control" type="button" aria-label="最小化" title="最小化" onclick={minimizeWindow}><Icon name="minus" size={14} /></button>
@@ -547,8 +547,8 @@
   <div class="app-shell">
     <aside class="sidebar">
       <div class="sidebar-brand">
-        <span class="sidebar-brand__mark"><Icon name="link" size={15} /></span>
-        <div><strong>SSH Forwarder</strong><span>端口转发工作台</span></div>
+        <img class="sidebar-brand__logo" src="/ssh-forward-logo.svg" alt="" />
+        <div><strong>SSH Forward</strong><span>端口转发工作台</span></div>
       </div>
 
       <div class="sidebar-section-label">工作区</div>
@@ -581,7 +581,7 @@
       </section>
 
       <div class="sidebar-footer">
-        <div class="sidebar-footer__meta">{desktopRuntime ? "SSH Forwarder · v0.2.1" : "SSH Forwarder · 预览版"}</div>
+        <div class="sidebar-footer__meta">{desktopRuntime ? "SSH Forward · v0.2.2" : "SSH Forward · 预览版"}</div>
       </div>
     </aside>
 

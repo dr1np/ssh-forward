@@ -1595,7 +1595,7 @@ input[aria-invalid="true"] { border-color: var(--terracotta-deep); }
 }
 
 
-/* v0.2.1 layout refinement: one action rail, one status card, page-level views. */
+/* v0.2.2 layout refinement: one action rail, one status card, page-level views. */
 .app-window {
   grid-template-rows: 36px minmax(0, 1fr);
 }
@@ -1611,6 +1611,14 @@ input[aria-invalid="true"] { border-color: var(--terracotta-deep); }
 .window-titlebar__identity {
   color: rgba(245, 233, 213, 0.86);
   letter-spacing: 0.01em;
+}
+
+.window-titlebar__logo {
+  display: block;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border-radius: 6px;
 }
 
 .window-titlebar__mark {
@@ -1651,6 +1659,14 @@ input[aria-invalid="true"] { border-color: var(--terracotta-deep); }
   border: 1px solid rgba(232, 220, 199, 0.28);
   border-radius: 10px 10px 10px 3px;
   background: rgba(198, 107, 61, 0.38);
+}
+
+.sidebar-brand__logo {
+  display: block;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border-radius: 10px 10px 10px 3px;
 }
 
 .sidebar-brand strong,
@@ -1892,10 +1908,11 @@ input[aria-invalid="true"] { border-color: var(--terracotta-deep); }
   position: relative;
   z-index: 4;
   flex: 0 0 auto;
-  margin: 10px 0 0;
-  padding: 12px 0 0;
-  border-top: 1px solid rgba(62, 58, 51, 0.11);
-  background: linear-gradient(180deg, rgba(212, 184, 149, 0.08), rgba(212, 184, 149, 0.98) 24%);
+  margin: 12px -8px -8px;
+  padding: 12px 8px 8px;
+  border-top: 0;
+  border-radius: 14px 14px 0 0;
+  background: rgba(232, 220, 199, 0.52);
 }
 
 .page-panel {

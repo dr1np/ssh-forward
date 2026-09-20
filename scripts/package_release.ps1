@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.2.1",
+    [string]$Version = "0.2.2",
     [string]$Output = (Join-Path $PSScriptRoot "..\artifacts")
 )
 
