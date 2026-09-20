@@ -1,6 +1,6 @@
 # SSH Forwarder v0.1 release record
 
-This release is built locally and is not pushed to a remote repository.
+This release record describes how the v0.1.0 artifacts were built.
 
 ## Windows
 
@@ -15,7 +15,7 @@ Build and package from the repository root:
 ```powershell
 uv venv .venv --python 3.13
 uv pip install --python .venv/Scripts/python.exe -r requirements-build.txt
-$env:PATH = "C:\Project\SSHforward\.venv\Scripts;C:\Users\tanzi\.cargo\bin;" + $env:PATH
+$env:PATH = "$PWD\.venv\Scripts;$env:USERPROFILE\.cargo\bin;" + $env:PATH
 cd frontend
 npm run desktop:build -- --no-bundle
 cd ..

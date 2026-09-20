@@ -38,7 +38,7 @@ V0.1 Windows portable 构建从仓库根目录执行：
 ```powershell
 uv venv .venv --python 3.13
 uv pip install --python .venv/Scripts/python.exe -r requirements-build.txt
-$env:PATH = "C:\Project\SSHforward\.venv\Scripts;C:\Users\tanzi\.cargo\bin;" + $env:PATH
+$env:PATH = "$PWD\..\.venv\Scripts;$env:USERPROFILE\.cargo\bin;" + $env:PATH
 cd frontend
 npm run desktop:build -- --no-bundle
 cd ..

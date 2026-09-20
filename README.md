@@ -53,13 +53,12 @@ npm run check
 npm run build
 ```
 
-从仓库根目录准备 Windows V0.1 portable 包：
+从仓库根目录准备 Windows V0.1 portable 包（以下命令中的 `$PWD` 指仓库根目录）：
 
 ```powershell
-cd C:\Project\SSHforward
 uv venv .venv --python 3.13
 uv pip install --python .venv/Scripts/python.exe -r requirements-build.txt
-$env:PATH = "C:\Project\SSHforward\.venv\Scripts;C:\Users\tanzi\.cargo\bin;" + $env:PATH
+$env:PATH = "$PWD\.venv\Scripts;$env:USERPROFILE\.cargo\bin;" + $env:PATH
 cd frontend
 npm run desktop:build -- --no-bundle
 cd ..
