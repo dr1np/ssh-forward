@@ -7,11 +7,14 @@ use std::path::PathBuf;
 struct Settings {
     version: u32,
     favorites: Vec<ForwardProfile>,
+    #[serde(default)]
+    preferences: serde_json::Value,
 }
 
 pub struct ProfileStore {
     path: PathBuf,
     favorites: Vec<ForwardProfile>,
+    preferences: serde_json::Value,
     load_failed: bool,
 }
 
@@ -20,6 +23,7 @@ impl ProfileStore {
         Self {
             path,
             favorites: Vec::new(),
+            preferences: serde_json::json!({}),
             load_failed: false,
         }
     }
@@ -53,6 +57,10 @@ impl ProfileStore {
             .filter_map(|item| serde_json::from_value::<ForwardProfile>(item.clone()).ok())
             .filter(|item| item.validate().is_ok() && seen.insert(item.id.clone()))
             .collect();
+        self.preferences = raw
+            .get("preferences")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
         self.load_failed = false;
         Ok(())
     }
@@ -92,6 +100,7 @@ impl ProfileStore {
         let payload = serde_json::to_vec_pretty(&Settings {
             version: 1,
             favorites: self.favorites.clone(),
+            preferences: self.preferences.clone(),
         })
         .map_err(|e| e.to_string())?;
         let temporary = self.path.with_extension("json.tmp");
@@ -161,6 +170,24 @@ mod tests {
         let mut store = ProfileStore::new(path.clone());
         store.load().unwrap();
         assert_eq!(store.favorites().len(), 1);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn preserves_preferences_when_updating_favorites() {
+        let path = std::env::temp_dir().join(format!(
+            "ssh-forwarder-rust-preferences-{}.json",
+            uuid::Uuid::new_v4()
+        ));
+        let item = profile();
+        let payload = json!({"version": 1, "favorites": [], "preferences": {"confirmOnExit": false, "defaultLocalBind": "::1"}});
+        fs::write(&path, serde_json::to_vec(&payload).unwrap()).unwrap();
+        let mut store = ProfileStore::new(path.clone());
+        store.load().unwrap();
+        store.upsert(item).unwrap();
+        let saved: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(saved["preferences"]["confirmOnExit"], false);
+        assert_eq!(saved["preferences"]["defaultLocalBind"], "::1");
         let _ = fs::remove_file(path);
     }
 }
