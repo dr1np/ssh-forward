@@ -27,7 +27,7 @@ interface BackendTunnel {
 
 export interface BackendEvent {
   event?: string;
-  type?: "log" | "connected" | "exited" | "stopped" | "backend_exited" | "protocol_error";
+  type?: "log" | "connected" | "exited" | "stopped" | "backend_exited";
   tunnel_id?: string;
   message?: string;
   tunnel?: BackendTunnel | null;
@@ -185,12 +185,8 @@ export async function subscribeBackendEvents(onEvent: (event: BackendEvent) => v
   const unlistenEvents = await listen<{ event?: string; data?: BackendEvent; message?: string }>("backend:event", (event) => {
     onEvent(event.payload.data ?? { event: event.payload.event, message: event.payload.message });
   });
-  const unlistenStderr = await listen<{ message?: string }>("backend:stderr", (event) => {
-    onEvent({ type: "protocol_error", event: "backend_stderr", message: event.payload.message });
-  });
   return () => {
     unlistenEvents();
-    unlistenStderr();
   };
 }
 
