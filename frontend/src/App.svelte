@@ -581,7 +581,7 @@
       </section>
 
       <div class="sidebar-footer">
-        <div class="sidebar-footer__meta">{desktopRuntime ? "SSH Forward · v0.2.2" : "SSH Forward · 预览版"}</div>
+        <div class="sidebar-footer__meta">{desktopRuntime ? "SSH Forward · v0.2.3" : "SSH Forward · 预览版"}</div>
       </div>
     </aside>
 

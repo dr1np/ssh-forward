@@ -34,6 +34,32 @@
   let busy = $state(false);
   let findingPort = $state(false);
   let fieldErrors = $state<Record<string, string>>({});
+  let hostPickerOpen = $state(false);
+  let hostPickerQuery = $state("");
+
+  const filteredHostAliases = $derived(
+    hostAliases.filter((alias) => alias.toLowerCase().includes(hostPickerQuery.trim().toLowerCase())).slice(0, 100),
+  );
+
+  const openHostPicker = () => {
+    hostPickerQuery = "";
+    hostPickerOpen = true;
+  };
+
+  const toggleHostPicker = () => {
+    hostPickerOpen = !hostPickerOpen;
+    if (hostPickerOpen) hostPickerQuery = "";
+  };
+
+  const closeHostPicker = () => {
+    window.setTimeout(() => (hostPickerOpen = false), 120);
+  };
+
+  const selectHost = (alias: string) => {
+    sshHost = alias;
+    hostPickerQuery = "";
+    hostPickerOpen = false;
+  };
 
   const findPort = async () => {
     if (findingPort || disabled) return;
@@ -108,16 +134,23 @@
   {#if connectionType === "config"}
     <div class="field-block">
       <label for="config-host">SSH Config 主机</label>
-      <div class="field-with-action">
-        <input aria-invalid={Boolean(fieldErrors["config-host"])} aria-describedby={fieldErrors["config-host"] ? "editor-error" : undefined} id="config-host" list="ssh-host-aliases" bind:value={sshHost} placeholder="例如 production" />
-        <datalist id="ssh-host-aliases">
-          {#each hostAliases as alias}
-            <option value={alias}>{alias}</option>
-          {/each}
-        </datalist>
-        <button class="small-button" type="button" title="刷新 SSH Config" aria-label="刷新 SSH Config" onclick={onRefreshHosts}><Icon name="refresh" size={16} /></button>
+      <div class="host-picker" role="combobox" aria-expanded={hostPickerOpen} aria-controls="ssh-host-options">
+        <div class="field-with-action">
+          <input aria-invalid={Boolean(fieldErrors["config-host"])} aria-describedby={fieldErrors["config-host"] ? "editor-error" : undefined} id="config-host" autocomplete="off" bind:value={sshHost} placeholder="例如 production" onfocus={openHostPicker} oninput={() => { hostPickerQuery = sshHost; hostPickerOpen = true; }} onblur={closeHostPicker} />
+          <button class:host-picker-toggle--open={hostPickerOpen} class="small-button host-picker-toggle" type="button" aria-label={hostPickerOpen ? "收起 SSH 主机列表" : "显示 SSH 主机列表"} aria-expanded={hostPickerOpen} onmousedown={(event) => event.preventDefault()} onclick={toggleHostPicker}><Icon name="chevron" size={16} /></button>
+          <button class="small-button" type="button" title="刷新 SSH Config" aria-label="刷新 SSH Config" onclick={onRefreshHosts}><Icon name="refresh" size={16} /></button>
+        </div>
+        {#if hostPickerOpen}
+          <div id="ssh-host-options" class="host-picker__menu" role="listbox" aria-label="SSH 主机列表">
+            {#each filteredHostAliases as alias (alias)}
+              <button class="host-picker__option" type="button" role="option" aria-selected={alias === sshHost} onmousedown={(event) => event.preventDefault()} onclick={() => selectHost(alias)}>{alias}</button>
+            {:else}
+              <span class="host-picker__empty">没有匹配的 SSH 主机</span>
+            {/each}
+          </div>
+        {/if}
       </div>
-      <p class="field-help">{hostAliases.length ? "列表来自用户 SSH 配置文件，可直接选择别名。" : "未发现 SSH 别名；可输入别名或切换自定义主机。"}</p>
+      <p class="field-help">{hostAliases.length ? `已读取 ${hostAliases.length} 个具体 SSH 主机，可输入关键字筛选。` : "未发现 SSH 别名；可输入别名或切换自定义主机。"}</p>
     </div>
   {:else}
     <div class="field-grid field-grid--host">

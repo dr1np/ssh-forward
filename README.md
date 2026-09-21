@@ -49,10 +49,10 @@ Windows 本地构建：
 cd frontend
 npm run desktop:build -- --no-bundle
 cd ..
-powershell -ExecutionPolicy Bypass -File scripts/package_release.ps1 -Version 0.2.2
+powershell -ExecutionPolicy Bypass -File scripts/package_release.ps1 -Version 0.2.3
 ```
 
-构建结果位于 `artifacts/v0.2.2/`。Windows portable 压缩包内只有 `SSHForwarder.exe` 和使用说明，不再有 `ssh-forwarder-service.exe`。Linux 的 AppImage/deb 可以使用 `scripts/Dockerfile.linux` 中的工具链构建；macOS 需要在 macOS 主机上运行相同的 Tauri 构建命令。
+构建结果位于 `artifacts/v0.2.3/`。Windows portable 压缩包内只有 `SSHForwarder.exe` 和使用说明，不再有 `ssh-forwarder-service.exe`。Linux 的 AppImage/deb 可以使用 `scripts/Dockerfile.linux` 中的工具链构建；macOS 需要在 macOS 主机上运行相同的 Tauri 构建命令。
 
 ## 使用
 

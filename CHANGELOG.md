@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.2.3] - 2026-09-22
+
+### Changed
+
+- Replaced the native SSH host datalist with a themed, searchable host picker.
+- The host picker now opens with all concrete SSH hosts and rotates its toggle icon while expanded.
+
+### Fixed
+
+- SSH Config discovery now exposes all concrete hosts from the local configuration; wildcard template hosts remain filtered out.
+- The host picker closes reliably when focus leaves it.
+- Added padding around the form scroll area so focus rings are not clipped by the editor card.
+
+### Verification
+
+- The local SSH configuration resolves 22 concrete hosts on the development machine.
+- Frontend check and production build pass.
+- Rust unit and runtime integration tests pass.
+
 ## [0.2.2] - 2026-09-20
 
 ### Changed
