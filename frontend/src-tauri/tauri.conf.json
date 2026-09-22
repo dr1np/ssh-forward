@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "SSH 端口转发助手",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "identifier": "com.sshforwarder.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -22,6 +22,7 @@
         "decorations": false,
         "theme": "Light",
         "resizable": true,
+        "generalAutofillEnabled": false,
         "fullscreen": false
       }
     ],

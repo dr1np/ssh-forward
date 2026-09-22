@@ -3,4 +3,6 @@ node_modules/
 dist/
 build/
 frontend/src-tauri/binaries/
+.localbuild/
+gui-test-screenshots/
 artifacts/

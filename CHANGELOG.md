@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.2.4] - 2026-09-23
+
+### Changed
+
+- Made the desktop window surface continuous by removing the standalone dark titlebar, extending the light main surface into the top control area, and moving the custom window controls into the main content corner.
+- Added explicit new/edit mode messaging in the profile editor; saving a new profile creates a fresh favorite, while editing preserves the selected favorite's identity.
+- Refined form presentation and interaction details with a wider create layout, separated connection tabs, improved editor scroll/action surfaces, disabled browser autofill for connection and port fields, and `ssh-forwarder` as Cargo's default run target.
+
+### Fixed
+
+- Opening “新建转发” or finishing a save now resets the editor to a blank new profile, preventing subsequent saves from overwriting the previous favorite.
+- “启动并保存” now starts the exact profile returned by the save operation, so it uses the persisted configuration after the editor reset.
+- Removed the dark right-side corner artifacts by letting the main surface run to the window's right and bottom edges; narrow layouts keep desktop controls in a fixed top strip while content scrolls.
+- Port-change input no longer invites browser autofill.
+
+### Verification
+
+- `npm run check` passes with 0 errors and 0 warnings.
+- The frontend production build completes successfully with 132 transformed modules.
+- All 21 Rust unit tests pass, and the isolated Windows release build completes successfully.
+- The packaged Windows executable reports ProductVersion and FileVersion 0.2.4.
+- The executable was launched and visually checked at the target desktop layout; the light workspace reaches the top and right window edges, and the integrated controls remain unobstructed.
+
 ## [0.2.3] - 2026-09-22
 
 ### Changed

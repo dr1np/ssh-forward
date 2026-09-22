@@ -5,6 +5,8 @@
 
   interface Props {
     initialProfile: ForwardProfile;
+    /** true 表示正在编辑已有收藏，保存会覆盖该收藏；false 表示全新配置，保存会新增收藏。 */
+    editing?: boolean;
     disabled?: boolean;
     hostAliases: string[];
     autoSelectPort: boolean;
@@ -17,7 +19,7 @@
     onStartAndSave: (profile: ForwardProfile) => void | Promise<void>;
   }
 
-  let { disabled = false, initialProfile, hostAliases, autoSelectPort, onSave, onStart, onRefreshHosts, onFindPort, onChooseIdentityFile, onReset, onStartAndSave }: Props = $props();
+  let { disabled = false, editing = false, initialProfile, hostAliases, autoSelectPort, onSave, onStart, onRefreshHosts, onFindPort, onChooseIdentityFile, onReset, onStartAndSave }: Props = $props();
   const initial: ForwardProfile = { ...untrack(() => initialProfile) };
   let connectionType = $state<ConnectionType>(initial.connectionType);
   let name = $state(initial.name);
@@ -114,12 +116,20 @@
 <section class="editor-card">
   <div class="section-heading">
     <div>
-      <span class="section-kicker">连接配置</span>
-      <h2>{initial.name ? "编辑配置" : "新建转发"}</h2>
+      <span class="section-kicker">{editing ? "编辑已有收藏" : "创建新配置"}</span>
+      <h2>{editing ? "编辑配置" : "新建转发"}</h2>
     </div>
       <span class="section-index">01</span>
       <button class="button button--quiet editor-reset" type="button" disabled={busy} onclick={onReset}>新建</button>
   </div>
+
+  <p class:editor-mode--new={!editing} class:editor-mode--edit={editing} class="editor-mode" role="status">
+    {#if editing}
+      <Icon name="edit" size={14} /> 正在编辑“{initial.name || "未命名配置"}”，保存将覆盖这条收藏。
+    {:else}
+      <Icon name="plus" size={14} /> 全新配置，保存后会新增一条收藏，不会覆盖已有配置。
+    {/if}
+  </p>
 
   <div class="editor-form-content">
     <div class="connection-tabs" role="tablist" aria-label="连接类型">
@@ -156,22 +166,22 @@
     <div class="field-grid field-grid--host">
       <div class="field-block">
         <label for="custom-host">主机 / IP</label>
-        <input aria-invalid={Boolean(fieldErrors["custom-host"])} aria-describedby={fieldErrors["custom-host"] ? "editor-error" : undefined} id="custom-host" bind:value={sshHost} placeholder="例如 192.0.2.10" />
+        <input aria-invalid={Boolean(fieldErrors["custom-host"])} aria-describedby={fieldErrors["custom-host"] ? "editor-error" : undefined} id="custom-host" autocomplete="off" bind:value={sshHost} placeholder="例如 192.0.2.10" />
       </div>
       <div class="field-block">
         <label for="ssh-port">SSH 端口</label>
-        <input aria-invalid={Boolean(fieldErrors["ssh-port"])} aria-describedby={fieldErrors["ssh-port"] ? "editor-error" : undefined} id="ssh-port" bind:value={sshPort} inputmode="numeric" />
+        <input aria-invalid={Boolean(fieldErrors["ssh-port"])} aria-describedby={fieldErrors["ssh-port"] ? "editor-error" : undefined} id="ssh-port" autocomplete="off" bind:value={sshPort} inputmode="numeric" />
       </div>
     </div>
     <div class="field-grid field-grid--host">
       <div class="field-block">
         <label for="ssh-user">用户名</label>
-        <input id="ssh-user" bind:value={sshUser} placeholder="可选" />
+        <input id="ssh-user" autocomplete="off" bind:value={sshUser} placeholder="可选" />
       </div>
       <div class="field-block">
         <label for="identity-file">私钥路径</label>
         <div class="field-with-action">
-          <input id="identity-file" bind:value={identityFile} placeholder="可选" />
+          <input id="identity-file" autocomplete="off" bind:value={identityFile} placeholder="可选" />
           <button class="small-button" type="button" title="选择 SSH 私钥" aria-label="选择 SSH 私钥" onclick={async () => { try { const selected = await onChooseIdentityFile(); if (selected) identityFile = selected; } catch (cause) { error = String(cause); } }}><Icon name="file" size={16} /></button>
         </div>
       </div>
@@ -190,13 +200,13 @@
 
   <div class="field-block">
     <label for="profile-name">配置名称</label>
-    <input id="profile-name" bind:value={name} placeholder="例如：本地 PostgreSQL" />
+    <input id="profile-name" autocomplete="off" bind:value={name} placeholder="例如：本地 PostgreSQL" />
   </div>
 
   <div class="field-grid">
     <div class="field-block">
       <label for="local-bind">监听地址</label>
-      <select id="local-bind" bind:value={localBind}>
+      <select id="local-bind" autocomplete="off" bind:value={localBind}>
         <option value="127.0.0.1">127.0.0.1 · 仅本机</option>
         <option value="::1">::1 · IPv6 本机</option>
         <option value="0.0.0.0">0.0.0.0 · 局域网</option>
@@ -205,7 +215,7 @@
     <div class="field-block">
       <label for="local-port">本地端口</label>
       <div class="field-with-action">
-        <input aria-invalid={Boolean(fieldErrors["local-port"])} aria-describedby={fieldErrors["local-port"] ? "editor-error" : undefined} id="local-port" bind:value={localPort} inputmode="numeric" />
+        <input aria-invalid={Boolean(fieldErrors["local-port"])} aria-describedby={fieldErrors["local-port"] ? "editor-error" : undefined} id="local-port" autocomplete="off" bind:value={localPort} inputmode="numeric" />
         <button class="small-button small-button--text" type="button" disabled={disabled || findingPort || busy} onclick={findPort}>{findingPort ? "查找中" : "自动"}</button>
       </div>
     </div>
@@ -214,11 +224,11 @@
   <div class="field-grid">
     <div class="field-block">
       <label for="remote-host">目标主机</label>
-      <input aria-invalid={Boolean(fieldErrors["remote-host"])} aria-describedby={fieldErrors["remote-host"] ? "editor-error" : undefined} id="remote-host" bind:value={remoteHost} placeholder="127.0.0.1" />
+      <input aria-invalid={Boolean(fieldErrors["remote-host"])} aria-describedby={fieldErrors["remote-host"] ? "editor-error" : undefined} id="remote-host" autocomplete="off" bind:value={remoteHost} placeholder="127.0.0.1" />
     </div>
     <div class="field-block">
       <label for="remote-port">目标端口</label>
-      <input aria-invalid={Boolean(fieldErrors["remote-port"])} aria-describedby={fieldErrors["remote-port"] ? "editor-error" : undefined} id="remote-port" bind:value={remotePort} inputmode="numeric" />
+      <input aria-invalid={Boolean(fieldErrors["remote-port"])} aria-describedby={fieldErrors["remote-port"] ? "editor-error" : undefined} id="remote-port" autocomplete="off" bind:value={remotePort} inputmode="numeric" />
     </div>
   </div>
 
@@ -230,7 +240,7 @@
 
   <div class="editor-actions">
     <button class="button button--primary" type="button" disabled={disabled || busy || findingPort} onclick={() => submit(onStart)}><Icon name="play" size={16} /> 启动转发</button>
-    <button class="button button--secondary" type="button" disabled={disabled || busy || findingPort} onclick={() => submit(onSave)}><Icon name="book" size={16} /> 保存收藏</button>
-    <button class="button button--secondary editor-actions__wide" type="button" disabled={disabled || busy || findingPort} onclick={() => submit(onStartAndSave)}><Icon name="play" size={16} /> 启动并收藏</button>
+    <button class="button button--secondary" type="button" disabled={disabled || busy || findingPort} onclick={() => submit(onSave)}><Icon name="book" size={16} /> {editing ? "保存修改" : "新增收藏"}</button>
+    <button class="button button--secondary editor-actions__wide" type="button" disabled={disabled || busy || findingPort} onclick={() => submit(onStartAndSave)}><Icon name="play" size={16} /> {editing ? "启动并保存修改" : "启动并新增收藏"}</button>
   </div>
 </section>

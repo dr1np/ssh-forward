@@ -39,7 +39,7 @@
     <p class="dialog-message">新端口连接成功后才停止原通道；如果失败，原转发继续运行。</p>
     <label class="dialog-field" for="next-local-port">
       <span>新的本地端口</span>
-      <input id="next-local-port" bind:value={value} inputmode="numeric" aria-invalid={Boolean(error)} onkeydown={(event) => event.key === "Enter" && submit()} />
+      <input id="next-local-port" autocomplete="off" bind:value={value} inputmode="numeric" aria-invalid={Boolean(error)} onkeydown={(event) => event.key === "Enter" && submit()} />
     </label>
     {#if error}<p class="dialog-error">{error}</p>{/if}
     <div class="dialog-actions">

@@ -40,7 +40,11 @@
   let tunnels = $state<ActiveTunnel[]>(desktopRuntime ? [] : [...sampleTunnels]);
   let logs = $state<LogEntry[]>(desktopRuntime ? [] : [...sampleLogs]);
   let selectedTunnelId = $state("sample-tunnel-production");
-  let selectedProfile = $state<ForwardProfile>(desktopRuntime ? makeBlankProfile() : sampleProfiles[0]);
+  // 预览模式也用全新的 id 预填示例数据，保持“新建模式 = 全新配置”的语义一致。
+  let selectedProfile = $state<ForwardProfile>(desktopRuntime ? makeBlankProfile() : { ...sampleProfiles[0], id: globalThis.crypto?.randomUUID?.() ?? "preview-profile" });
+  let editingProfileId = $state<string | null>(null);
+  // 保存成功后用于“启动并保存”：保存会把编辑器重置为空白新建，启动必须使用刚落库的配置。
+  let lastSavedProfile = $state<ForwardProfile | null>(null);
   let editorKey = $state(0);
   let copiedEndpoint = $state("");
   let backendReady = $state(!desktopRuntime);
@@ -90,15 +94,25 @@
 
   const selectProfile = (profile: ForwardProfile) => {
     selectedProfile = { ...profile };
+    editingProfileId = profile.id;
     editorKey += 1;
     activeTab = "create";
   };
 
   const resetEditor = () => {
     selectedProfile = makeBlankProfile(hostAliases[0] ?? "");
+    editingProfileId = null;
     editorKey += 1;
     activeTab = "create";
   };
+
+  // 左侧“新建转发”必须回到全新的新建模式，避免继承已保存配置的 id 造成覆盖。
+  const openCreateTab = () => {
+    resetEditor();
+  };
+
+  // 编辑模式只有在目标收藏仍然存在时才成立，避免删除后误判为覆盖保存。
+  const isEditingProfile = $derived(editingProfileId !== null && profiles.some((item) => item.id === editingProfileId));
 
   const savePreferences = (next: AppPreferences) => {
     preferences = next;
@@ -149,6 +163,7 @@
       profiles = profiles.filter((item) => item.id !== profile.id);
       if (selectedProfile.id === profile.id) {
         selectedProfile = makeBlankProfile(hostAliases[0] ?? "");
+        editingProfileId = null;
         editorKey += 1;
       }
       addLog("info", `已删除收藏“${profile.name}”。`);
@@ -187,7 +202,9 @@
       profiles = snapshot.profiles;
       tunnels = snapshot.tunnels;
       logs = [];
-      selectedProfile = profiles[0] ? { ...profiles[0] } : makeBlankProfile(hostAliases[0] ?? "");
+      // 启动后一律停留在空白新建配置，避免新建模式继承收藏里的 id 而覆盖已保存配置。
+      selectedProfile = makeBlankProfile(hostAliases[0] ?? "");
+      editingProfileId = null;
       editorKey += 1;
       backendReady = true;
       if (snapshot.warning) addLog("error", snapshot.warning);
@@ -301,13 +318,20 @@
 
   const saveProfile = async (profile: ForwardProfile): Promise<boolean> => {
     try {
-      const saved = desktopRuntime ? await saveBackendProfile(profile) : profile;
+      // 新建模式必须写入一个新的收藏 id；只有编辑模式才沿用原有 id 更新已有配置。
+      const payload: ForwardProfile = isEditingProfile && editingProfileId !== null
+        ? { ...profile, id: editingProfileId as string }
+        : { ...profile, id: globalThis.crypto?.randomUUID?.() ?? `profile-${Date.now()}` };
+      const saved = desktopRuntime ? await saveBackendProfile(payload) : payload;
       const existing = profiles.some((item) => item.id === saved.id);
       profiles = existing ? profiles.map((item) => (item.id === saved.id ? saved : item)) : [saved, ...profiles];
-      selectedProfile = { ...saved };
+      // 保存完成后回到全新的新建模式，避免下一次保存覆盖刚刚写好的收藏。
+      selectedProfile = makeBlankProfile(hostAliases[0] ?? "");
+      editingProfileId = null;
       editorKey += 1;
       activeTab = "favorites";
-      addLog("success", `已保存收藏“${saved.name}”。`);
+      addLog("success", existing ? `已更新收藏“${saved.name}”。` : `已新增收藏“${saved.name}”。`);
+      lastSavedProfile = saved;
       return true;
     } catch (error) {
       backendError = String(error);
@@ -317,7 +341,11 @@
   };
 
   const startAndSave = async (profile: ForwardProfile) => {
-    if (await saveProfile(profile)) await startTunnel(profile);
+    // 保存会把编辑器重置为空白新建，因此这里启动刚落库的那份配置。
+    if (await saveProfile(profile)) {
+      const saved = lastSavedProfile;
+      if (saved) await startTunnel({ ...saved });
+    }
   };
 
   const refreshHosts = async () => {
@@ -531,29 +559,17 @@
   <meta name="description" content="集中管理 SSH 本地端口转发。" />
 </svelte:head>
 
-<div class="app-window">
-  <div class="window-titlebar" data-tauri-drag-region>
-    <div class="window-titlebar__identity" data-tauri-drag-region>
-      <img class="window-titlebar__logo" src="/ssh-forward-logo.svg" alt="" />
-      <span>SSH Forward</span>
-    </div>
-    <div class="window-controls">
-      <button class="window-control" type="button" aria-label="最小化" title="最小化" onclick={minimizeWindow}><Icon name="minus" size={14} /></button>
-      <button class="window-control" type="button" aria-label="最大化" title="最大化" onclick={toggleMaximizeWindow}><Icon name="maximize" size={12} /></button>
-      <button class="window-control window-control--close" type="button" aria-label="关闭" title="关闭" onclick={closeWindow}><Icon name="close" size={14} /></button>
-    </div>
-  </div>
-
+<div class="app-window" class:desktop={desktopRuntime}>
   <div class="app-shell">
     <aside class="sidebar">
-      <div class="sidebar-brand">
+      <div class="sidebar-brand" data-tauri-drag-region="deep">
         <img class="sidebar-brand__logo" src="/ssh-forward-logo.svg" alt="" />
         <div><strong>SSH Forward</strong><span>端口转发工作台</span></div>
       </div>
 
       <div class="sidebar-section-label">工作区</div>
       <nav class="sidebar-nav" aria-label="工作区导航">
-        <button class:active={activeTab === "create"} type="button" onclick={() => (activeTab = "create")}><Icon name="plus" size={17} /> 新建转发</button>
+        <button class:active={activeTab === "create"} type="button" onclick={openCreateTab}><Icon name="plus" size={17} /> 新建转发</button>
         <button class:active={activeTab === "running"} type="button" onclick={() => (activeTab = "running")}><Icon name="link" size={17} /> 运行中的转发 <span>{tunnels.filter((item) => item.status === "running" || item.status === "connecting").length}</span></button>
         <button class:active={activeTab === "favorites"} type="button" onclick={() => (activeTab = "favorites")}><Icon name="book" size={17} /> 收藏 <span>{profiles.length}</span></button>
         <button class:active={activeTab === "logs"} type="button" onclick={() => (activeTab = "logs")}><Icon name="file" size={17} /> 日志 <span>{logs.length}</span></button>
@@ -581,11 +597,20 @@
       </section>
 
       <div class="sidebar-footer">
-        <div class="sidebar-footer__meta">{desktopRuntime ? "SSH Forward · v0.2.3" : "SSH Forward · 预览版"}</div>
+        <div class="sidebar-footer__meta">{desktopRuntime ? "SSH Forward · v0.2.4" : "SSH Forward · 预览版"}</div>
       </div>
     </aside>
 
     <main class="main-content">
+      {#if desktopRuntime}
+        <div class="main-drag-region" data-tauri-drag-region aria-hidden="true"></div>
+        <div class="window-controls" data-tauri-drag-region="false">
+          <button class="window-control" type="button" aria-label="最小化" title="最小化" onclick={minimizeWindow}><Icon name="minus" size={14} /></button>
+          <button class="window-control" type="button" aria-label="最大化" title="最大化" onclick={toggleMaximizeWindow}><Icon name="maximize" size={12} /></button>
+          <button class="window-control window-control--close" type="button" aria-label="关闭" title="关闭" onclick={closeWindow}><Icon name="close" size={14} /></button>
+        </div>
+      {/if}
+
       <header class="topbar">
         <div>
           <span class="section-kicker">{activeTab === "create" ? "新建连接" : "工作区"}</span>
@@ -618,7 +643,7 @@
         <div class="content-grid content-grid--create">
           <div class="editor-column">
             {#key editorKey}
-              <ProfileEditor disabled={!backendReady} initialProfile={selectedProfile} {hostAliases} autoSelectPort={preferences.autoSelectPort} onSave={saveProfile} onStart={startTunnel} onRefreshHosts={refreshHosts} onFindPort={getFreePort} onChooseIdentityFile={chooseIdentityPath} onReset={resetEditor} onStartAndSave={startAndSave} />
+              <ProfileEditor disabled={!backendReady} editing={isEditingProfile} initialProfile={selectedProfile} {hostAliases} autoSelectPort={preferences.autoSelectPort} onSave={saveProfile} onStart={startTunnel} onRefreshHosts={refreshHosts} onFindPort={getFreePort} onChooseIdentityFile={chooseIdentityPath} onReset={resetEditor} onStartAndSave={startAndSave} />
             {/key}
           </div>
           <RunningPanel tunnels={tunnels.filter((item) => item.status === "running" || item.status === "connecting")} {selectedTunnelId} {pendingTunnels} emptyMessage="填写左侧配置并启动后，这里会显示正在运行的连接。" onSelect={selectTunnel} onCopy={copyEndpoint} onPortChange={changePort} onStop={stopTunnel} onRestart={restartTunnel} onDelete={requestDeleteTunnel} onClear={clearFinished} />
