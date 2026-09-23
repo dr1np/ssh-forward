@@ -746,6 +746,7 @@ select:focus {
 
 .editor-actions__wide {
   flex-basis: 100%;
+  grid-column: 1 / -1;
 }
 
 .button {
@@ -1940,15 +1941,21 @@ input[aria-invalid="true"] { border-color: var(--terracotta-deep); }
 }
 
 .editor-card .editor-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   position: relative;
   z-index: 4;
   flex: 0 0 auto;
-  margin: 12px -8px -8px;
-  padding: 12px 8px 8px;
-  border-top: 1px solid rgba(62, 58, 51, 0.14);
-  border-radius: 14px 14px 0 0;
+  margin: 12px 0 0;
+  padding: 10px;
+  border: 1px solid rgba(62, 58, 51, 0.14);
+  border-radius: 14px;
   background: rgba(232, 220, 199, 0.96);
-  box-shadow: 0 -14px 26px rgba(76, 57, 37, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+.editor-card .editor-actions > .button {
+  width: 100%;
 }
 
 .page-panel {
@@ -2108,8 +2115,10 @@ input[aria-invalid="true"] { border-color: var(--terracotta-deep); }
     position: static;
     margin: 10px 0 0;
     padding: 0;
-    border-top: 0;
+    border: 0;
+    border-radius: 0;
     background: transparent;
+    box-shadow: none;
   }
 
   .editor-column,

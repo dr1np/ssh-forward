@@ -1,4 +1,4 @@
-# SSH 端口转发助手
+# SSHForward
 
 一个跨平台桌面工具，用来集中管理 SSH 本地端口转发。桌面后端完全由 Rust 实现，直接调用系统 OpenSSH，不保存账号密码，也不需要 Python 或独立 service 可执行文件。
 
@@ -20,7 +20,7 @@
 - Linux 的 WebKitGTK、桌面运行库和系统 OpenSSH；
 - macOS 的 WebKit、系统 OpenSSH。
 
-OpenSSH 可执行文件必须位于系统 `PATH` 中。收藏保存在 Windows 的 `%APPDATA%\\SSHForwarder\\settings.json`，Linux 的 `$XDG_CONFIG_HOME/SSHForwarder/settings.json`，macOS 的 `~/Library/Application Support/SSHForwarder/settings.json`。
+OpenSSH 可执行文件必须位于系统 `PATH` 中。品牌名为 `SSHForward`；为兼容已有用户数据，收藏仍使用历史数据目录名 `SSHForwarder`，不会仅因品牌改名而迁移到新目录：Windows 的 `%APPDATA%\\SSHForwarder\\settings.json`，Linux 的 `$XDG_CONFIG_HOME/SSHForwarder/settings.json`，macOS 的 `~/Library/Application Support/SSHForwarder/settings.json`。
 
 ## 开发与检查
 
@@ -49,10 +49,10 @@ Windows 本地构建：
 cd frontend
 npm run desktop:build -- --no-bundle
 cd ..
-powershell -ExecutionPolicy Bypass -File scripts/package_release.ps1 -Version 0.2.4
+powershell -ExecutionPolicy Bypass -File scripts/package_release.ps1 -Version 0.2.5
 ```
 
-构建结果位于 `artifacts/v0.2.4/`。Windows portable 压缩包内只有 `SSHForwarder.exe` 和使用说明，不再有 `ssh-forwarder-service.exe`。Linux 的 AppImage/deb 可以使用 `scripts/Dockerfile.linux` 中的工具链构建；macOS 需要在 macOS 主机上运行相同的 Tauri 构建命令。
+构建结果位于 `artifacts/v0.2.5/`。Windows portable 目录和压缩包使用 `SSHForward-v0.2.5-windows-x64` 命名，包内只有 `SSHForward.exe` 和使用说明，不再有 `ssh-forwarder-service.exe`。Linux 的 AppImage/deb 可以使用 `scripts/Dockerfile.linux` 中的工具链构建；macOS 需要在 macOS 主机上运行相同的 Tauri 构建命令。
 
 ## 使用
 

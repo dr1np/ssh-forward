@@ -1,6 +1,6 @@
-# SSH Forwarder release notes
+# SSHForward release notes
 
-仓库早期的 `v0.1.0` 发布包使用 Python sidecar，`v0.2.0` 是 Rust 后端的首个单 exe 版本。当前窗口融合与收藏语义修正版为 `v0.2.4`；旧 tag 仍保留，便于复现历史包。
+仓库早期的 `v0.1.0` 发布包使用 Python sidecar，`v0.2.0` 是 Rust 后端的首个单 exe 版本。当前窗口融合、收藏语义与 SSHForward 品牌统一修正版为 `v0.2.5`；旧 tag 仍保留，便于复现历史包。
 
 ## Windows
 
@@ -11,11 +11,11 @@ cd frontend
 npm ci
 npm run desktop:build -- --no-bundle
 cd ..
-powershell -ExecutionPolicy Bypass -File scripts/package_release.ps1 -Version 0.2.4
+powershell -ExecutionPolicy Bypass -File scripts/package_release.ps1 -Version 0.2.5
 ```
 
 脚本会把 `frontend/src-tauri/target/release/ssh-forwarder.exe` 复制为
-`SSHForwarder.exe`，生成 portable zip 和 SHA-256 校验文件。portable 包不包含 service 程序，也不需要 Python。
+`SSHForward.exe`，生成 `SSHForward-v0.2.5-windows-x64` portable 目录、同名 zip 和 SHA-256 校验文件。portable 包不包含 service 程序，也不需要 Python。仓库根目录的启动脚本优先使用 `SSHForward.exe`，并兼容已有的 `SSHForwarder.exe`。
 
 ## Linux
 

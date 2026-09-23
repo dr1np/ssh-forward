@@ -67,7 +67,7 @@ pub fn run() {
                             .icon(icon)
                             .menu(&menu)
                             .show_menu_on_left_click(false)
-                            .tooltip("SSH 端口转发助手")
+                            .tooltip("SSHForward")
                             .on_menu_event(|app, event| match event.id().as_ref() {
                                 "show-window" => show_main_window(app),
                                 "quit-app" => app.exit(0),

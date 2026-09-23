@@ -1,6 +1,6 @@
-# SSH Forwarder frontend
+# SSHForward frontend
 
-这是 SSH 端口转发助手的 Svelte/Vite + Tauri 前端。浏览器预览使用明确标记的演示数据，Tauri 运行时直接调用同一个 Rust 后端核心；桌面包只有一个可执行文件，不启动 Python service 或 sidecar。
+这是 SSHForward 的 Svelte/Vite + Tauri 前端。浏览器预览使用明确标记的演示数据，Tauri 运行时直接调用同一个 Rust 后端核心；桌面包只有一个 `SSHForward.exe`，不启动 Python service 或 sidecar。
 
 ## 本地开发
 

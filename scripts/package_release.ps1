@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.2.4",
+    [string]$Version = "0.2.5",
     [string]$Output = (Join-Path $PSScriptRoot "..\artifacts")
 )
 
@@ -8,7 +8,7 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $outputRoot = [System.IO.Path]::GetFullPath($Output)
 $release = Join-Path $outputRoot ("v" + $Version)
 New-Item -ItemType Directory -Path $release -Force | Out-Null
-$portable = Join-Path $release ("ssh-forwarder-v" + $Version + "-windows-x64")
+$portable = Join-Path $release ("SSHForward-v" + $Version + "-windows-x64")
 $mainBinary = Join-Path $root "frontend\src-tauri\target\release\ssh-forwarder.exe"
 
 if (Test-Path -LiteralPath $portable) {
@@ -19,33 +19,33 @@ if (-not (Test-Path -LiteralPath $mainBinary -PathType Leaf)) {
     throw "Missing release binary: $mainBinary"
 }
 
-Copy-Item -LiteralPath $mainBinary -Destination (Join-Path $portable "SSHForwarder.exe")
+Copy-Item -LiteralPath $mainBinary -Destination (Join-Path $portable "SSHForward.exe")
 @"
-SSH Forwarder v$Version
+SSHForward v$Version
 
-Run SSHForwarder.exe. Windows OpenSSH Client and WebView2 are required.
+Run SSHForward.exe. Windows OpenSSH Client and WebView2 are required.
 Close the window to keep forwarding in the system tray. Right-click the tray icon
 to show the window or exit and stop all forwarding.
 This package contains one executable; Python and a separate service process are not required.
 "@ | Set-Content -LiteralPath (Join-Path $portable "README.txt") -Encoding utf8
 
-$archive = Join-Path $release ("ssh-forwarder-v" + $Version + "-windows-x64.zip")
+$archive = Join-Path $release ("SSHForward-v" + $Version + "-windows-x64.zip")
 if (Test-Path -LiteralPath $archive) {
     Remove-Item -LiteralPath $archive -Force
 }
 Compress-Archive -Path (Join-Path $portable "*") -DestinationPath $archive -CompressionLevel Optimal
 
-$oldLinuxAssets = Get-ChildItem -LiteralPath $release -File -Filter ("ssh-forwarder-v" + $Version + "-linux-x64.*") -ErrorAction SilentlyContinue
+$oldLinuxAssets = Get-ChildItem -LiteralPath $release -File -Filter ("SSHForward-v" + $Version + "-linux-x64.*") -ErrorAction SilentlyContinue
 if ($oldLinuxAssets) {
     $oldLinuxAssets | Remove-Item -Force
 }
 $appImage = Get-ChildItem -LiteralPath (Join-Path $root "frontend\src-tauri\target\release\bundle\appimage") -Filter ("*_" + $Version + "_*.AppImage") -File -ErrorAction SilentlyContinue | Select-Object -First 1
 $deb = Get-ChildItem -LiteralPath (Join-Path $root "frontend\src-tauri\target\release\bundle\deb") -Filter ("*_" + $Version + "_*.deb") -File -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($appImage) {
-    Copy-Item -LiteralPath $appImage.FullName -Destination (Join-Path $release ("ssh-forwarder-v" + $Version + "-linux-x64.AppImage")) -Force
+    Copy-Item -LiteralPath $appImage.FullName -Destination (Join-Path $release ("SSHForward-v" + $Version + "-linux-x64.AppImage")) -Force
 }
 if ($deb) {
-    Copy-Item -LiteralPath $deb.FullName -Destination (Join-Path $release ("ssh-forwarder-v" + $Version + "-linux-x64.deb")) -Force
+    Copy-Item -LiteralPath $deb.FullName -Destination (Join-Path $release ("SSHForward-v" + $Version + "-linux-x64.deb")) -Force
 }
 
 $checksum = Join-Path $release "SHA256SUMS.txt"

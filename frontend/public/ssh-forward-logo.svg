@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
-  <title id="title">SSH Forward</title>
-  <desc id="desc">A centered terracotta S mark for SSH Forward.</desc>
+  <title id="title">SSHForward</title>
+  <desc id="desc">A centered terracotta S mark for SSHForward.</desc>
   <rect width="1024" height="1024" rx="224" fill="#3e3a33"/>
   <path d="M720 270C660 210 352 210 302 330c-42 100 56 138 210 158s252 64 208 186c-44 122-350 150-428 30" fill="none" stroke="#c66b3d" stroke-width="76" stroke-linecap="round" stroke-linejoin="round"/>
   <circle cx="720" cy="270" r="46" fill="#e0ad3f" stroke="#f3ca6b" stroke-width="6"/>

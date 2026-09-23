@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "SSH 端口转发助手",
-  "version": "0.2.4",
+  "productName": "SSHForward",
+  "version": "0.2.5",
   "identifier": "com.sshforwarder.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "SSH 端口转发助手",
+        "title": "SSHForward",
         "width": 1280,
         "height": 820,
         "visible": true,

@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.5] - 2026-09-23
+
+### Changed
+
+- Unified the user-facing product brand as `SSHForward`: the packaged executable is now `SSHForward.exe`, and portable directories, archives, and launchers use `SSHForward`, while the legacy `SSHForwarder.exe` launch path and existing `SSHForwarder` data directory remain supported for compatibility.
+- Disabled the WebView's native context menu while using the desktop app.
+- Added a favorite-copy action that opens an editable draft with a collision suffix when needed before saving it as a new favorite.
+- Improved the editor bottom action area so its actions share the available width, keep rounded corners, and keep the surface and shadow within the editor card.
+
+### Verification
+
+- `npm run check` passes with 0 errors and 0 warnings; the frontend production build completes with 132 transformed modules.
+- All 21 Rust unit tests pass, and the isolated Windows release build succeeds.
+- The packaged Windows executable reports ProductVersion and FileVersion 0.2.5.
+- The native app was visually checked after the action-area fix; its buttons fill the two-column layout and the rounded action panel remains inside the editor card.
+- The favorite-copy flow was checked with isolated data: repeated copies receive distinct suffixes, and editing/saving the second copy leaves both earlier profiles unchanged.
+
 ## [0.2.4] - 2026-09-23
 
 ### Changed

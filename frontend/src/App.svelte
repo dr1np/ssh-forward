@@ -99,6 +99,32 @@
     activeTab = "create";
   };
 
+  const duplicateProfileName = (sourceName: string) => {
+    const baseName = sourceName.trim() || "新建转发";
+    const existingNames = new Set(profiles.map((profile) => profile.name.trim().toLocaleLowerCase()));
+    const firstCopyName = `${baseName}（副本）`;
+    if (!existingNames.has(firstCopyName.toLocaleLowerCase())) return firstCopyName;
+
+    for (let suffix = 2; ; suffix += 1) {
+      const candidate = `${baseName}（副本 ${suffix}）`;
+      if (!existingNames.has(candidate.toLocaleLowerCase())) return candidate;
+    }
+  };
+
+  const duplicateProfile = (profile: ForwardProfile) => {
+    const copy: ForwardProfile = {
+      ...profile,
+      id: globalThis.crypto?.randomUUID?.() ?? `profile-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: duplicateProfileName(profile.name),
+    };
+    delete copy.isSample;
+    selectedProfile = copy;
+    editingProfileId = null;
+    editorKey += 1;
+    activeTab = "create";
+    addLog("info", `已复制“${profile.name}”为“${copy.name}”，修改后保存即可新增收藏。`);
+  };
+
   const resetEditor = () => {
     selectedProfile = makeBlankProfile(hostAliases[0] ?? "");
     editingProfileId = null;
@@ -268,7 +294,7 @@
       await window.show();
       await window.unminimize();
       await window.setFocus();
-      await window.setTitle("SSH 端口转发助手");
+      await window.setTitle("SSHForward");
     })();
     const closeListener = getCurrentWindow().onCloseRequested(async (event) => {
       const runningCount = tunnels.filter((item) => item.status === "running" || item.status === "connecting").length;
@@ -559,12 +585,14 @@
   <meta name="description" content="集中管理 SSH 本地端口转发。" />
 </svelte:head>
 
+<svelte:window oncontextmenu={(event) => event.preventDefault()} />
+
 <div class="app-window" class:desktop={desktopRuntime}>
   <div class="app-shell">
     <aside class="sidebar">
       <div class="sidebar-brand" data-tauri-drag-region="deep">
         <img class="sidebar-brand__logo" src="/ssh-forward-logo.svg" alt="" />
-        <div><strong>SSH Forward</strong><span>端口转发工作台</span></div>
+        <div><strong>SSHForward</strong><span>端口转发工作台</span></div>
       </div>
 
       <div class="sidebar-section-label">工作区</div>
@@ -597,7 +625,7 @@
       </section>
 
       <div class="sidebar-footer">
-        <div class="sidebar-footer__meta">{desktopRuntime ? "SSH Forward · v0.2.4" : "SSH Forward · 预览版"}</div>
+        <div class="sidebar-footer__meta">{desktopRuntime ? "SSHForward · v0.2.5" : "SSHForward · 预览版"}</div>
       </div>
     </aside>
 
@@ -651,7 +679,7 @@
       {:else if activeTab === "running"}
         <RunningPanel tunnels={tunnels} {selectedTunnelId} {pendingTunnels} emptyMessage="打开新建转发页面，填写连接信息后启动第一条本地隧道。" onSelect={selectTunnel} onCopy={copyEndpoint} onPortChange={changePort} onStop={stopTunnel} onRestart={restartTunnel} onDelete={requestDeleteTunnel} onClear={clearFinished} />
       {:else if activeTab === "favorites"}
-        <FavoritesPanel {profiles} {backendReady} {pendingStarts} onEdit={selectProfile} onDelete={requestDeleteProfile} onStart={startTunnel} />
+        <FavoritesPanel {profiles} {backendReady} {pendingStarts} onEdit={selectProfile} onDuplicate={duplicateProfile} onDelete={requestDeleteProfile} onStart={startTunnel} />
       {:else}
         <section class="page-panel page-panel--logs"><LogPanel logs={logs} onClear={clearLogs} /></section>
       {/if}

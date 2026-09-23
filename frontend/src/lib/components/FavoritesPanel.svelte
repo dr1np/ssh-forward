@@ -8,11 +8,12 @@
     backendReady: boolean;
     pendingStarts: string[];
     onEdit: (profile: ForwardProfile) => void;
+    onDuplicate: (profile: ForwardProfile) => void;
     onDelete: (profile: ForwardProfile) => void;
     onStart: (profile: ForwardProfile) => void | Promise<void>;
   }
 
-  let { profiles, backendReady, pendingStarts, onEdit, onDelete, onStart }: Props = $props();
+  let { profiles, backendReady, pendingStarts, onEdit, onDuplicate, onDelete, onStart }: Props = $props();
 </script>
 
 <section class="page-panel page-panel--list">
@@ -35,6 +36,7 @@
         </div>
         <div class="favorite-actions">
           <button class="icon-button" type="button" title="编辑配置" aria-label="编辑配置" onclick={() => onEdit(profile)}><Icon name="edit" size={16} /></button>
+          <button class="icon-button" type="button" title="复制配置" aria-label="复制配置" onclick={() => onDuplicate(profile)}><Icon name="clipboard" size={16} /></button>
           <button class="icon-button icon-button--danger" type="button" title="删除收藏" aria-label="删除收藏" onclick={() => onDelete(profile)}><Icon name="trash" size={16} /></button>
           <button class="button button--primary button--small" type="button" disabled={!backendReady || pendingStarts.includes(profile.id)} onclick={() => onStart(profile)}><Icon name="play" size={14} /> 启动</button>
         </div>
